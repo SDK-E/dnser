@@ -19,6 +19,7 @@ type Runtime interface {
 	Stream() *logstream.Stream
 	Checker() *health.Checker
 	DNSPort() int
+	UIPort() int
 	DashboardURL() string
 }
 
@@ -83,12 +84,16 @@ type statusPayload struct {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	st := s.rt.Store().Settings()
+	ports := st.Ports
+	if effective := s.rt.UIPort(); effective > 0 {
+		ports.UI = effective
+	}
 	writeJSON(w, http.StatusOK, statusPayload{
 		Version:      s.version,
 		TLD:          st.TLD,
 		Bind:         st.Bind,
 		DNSPort:      s.rt.DNSPort(),
-		Ports:        st.Ports,
+		Ports:        ports,
 		Upstreams:    st.Upstreams,
 		DashboardURL: s.rt.DashboardURL(),
 		Projects:     len(s.rt.Store().Projects()),

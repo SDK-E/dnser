@@ -32,6 +32,7 @@ type Runtime struct {
 	checker *health.Checker
 
 	dnsPort   int
+	uiPort    int
 	stopWatch func()
 	reloaded  chan struct{}
 }
@@ -89,7 +90,20 @@ func New(opts Options) (*Runtime, error) {
 
 	rt.proxy = proxyd.NewServer(rt.router, rt.manager)
 
-	rt.applyRoutes(cfg)
+	uiPort := cfg.Settings.Ports.UI
+	if !opts.SkipListeners {
+		picked, ok := dnscore.PickFreeTCPPort(cfg.Settings.Bind, uiPort)
+		if !ok {
+			return nil, fmt.Errorf("start dashboard: no available port on %s", cfg.Settings.Bind)
+		}
+		if picked != uiPort {
+			slog.Warn(fmt.Sprintf("port %s:%d unavailable; dashboard listening on %s:%d instead", cfg.Settings.Bind, uiPort, cfg.Settings.Bind, picked))
+		}
+		uiPort = picked
+	}
+	rt.uiPort = uiPort
+
+	rt.applyRoutes(cfg, uiPort)
 
 	if !opts.SkipListeners {
 		bind := cfg.Settings.Bind
@@ -121,7 +135,7 @@ func New(opts Options) (*Runtime, error) {
 
 	rt.ui = api.New(rt, opts.Version)
 	if !opts.SkipListeners {
-		if err := rt.ui.ListenAndServe(cfg.Settings.Bind, cfg.Settings.Ports.UI); err != nil {
+		if err := rt.ui.ListenAndServe(cfg.Settings.Bind, uiPort); err != nil {
 			return nil, fmt.Errorf("start dashboard: %w", err)
 		}
 	}
@@ -150,7 +164,7 @@ func pickDNSPort(bind string, preferred int, fallbacks []int) (int, string, erro
 	return port, note, nil
 }
 
-func (rt *Runtime) applyRoutes(cfg config.Config) {
+func (rt *Runtime) applyRoutes(cfg config.Config, uiPort int) {
 	var routes []proxyd.Route
 	for _, p := range cfg.Projects {
 		if p.Port <= 0 {
@@ -171,9 +185,9 @@ func (rt *Runtime) applyRoutes(cfg config.Config) {
 			})
 		}
 	}
-	dashTarget := fmt.Sprintf("%s:%d", cfg.Settings.Bind, cfg.Settings.Ports.UI)
+	dashTarget := fmt.Sprintf("%s:%d", cfg.Settings.Bind, uiPort)
 	routes = append(routes,
-		proxyd.Route{Host: config.DashboardDomain(cfg.Settings.TLD), Target: dashTarget, HTTPS: true, Port: cfg.Settings.Ports.UI},
+		proxyd.Route{Host: config.DashboardDomain(cfg.Settings.TLD), Target: dashTarget, HTTPS: true, Port: uiPort},
 	)
 	rt.router.Replace(routes)
 }
@@ -186,7 +200,7 @@ func (rt *Runtime) Reload(cfg config.Config) error {
 	if rt.dns != nil && rt.dns.Cache() != nil {
 		rt.dns.Cache().InvalidateAll()
 	}
-	rt.applyRoutes(cfg)
+	rt.applyRoutes(cfg, rt.uiPort)
 	select {
 	case rt.reloaded <- struct{}{}:
 	default:
@@ -209,6 +223,13 @@ func (rt *Runtime) Checker() *health.Checker { return rt.checker }
 func (rt *Runtime) Proxy() *proxyd.Server { return rt.proxy }
 
 func (rt *Runtime) DNSPort() int { return rt.dnsPort }
+
+func (rt *Runtime) UIPort() int {
+	if rt.uiPort > 0 {
+		return rt.uiPort
+	}
+	return rt.store.Settings().Ports.UI
+}
 
 func (rt *Runtime) APIHandler() http.Handler {
 	if rt.ui == nil {

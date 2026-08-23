@@ -166,3 +166,32 @@ func portOf(addr string) int {
 	_, _ = fmt.Sscanf(portStr, "%d", &p)
 	return p
 }
+
+func TestRuntimeUIPortFallsBackWhenOccupied(t *testing.T) {
+	store := testStore(t)
+
+	held, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", store.Settings().Ports.UI))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = held.Close() }()
+
+	rt, err := New(Options{Store: store, Version: "test", SkipListeners: false})
+	if err != nil {
+		t.Fatalf("daemon must start despite occupied UI port: %v", err)
+	}
+	defer func() { _ = rt.Shutdown(context.Background()) }()
+
+	got := rt.UIPort()
+	if got == store.Settings().Ports.UI || got <= 0 {
+		t.Fatalf("expected ephemeral fallback port, got %d", got)
+	}
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/api/v1/status", got))
+	if err != nil {
+		t.Fatalf("dashboard unreachable on fallback port: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d", resp.StatusCode)
+	}
+}

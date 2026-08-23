@@ -247,3 +247,27 @@ func ProbeLocal(bind string, port int, name string) error {
 	}
 	return nil
 }
+
+func PickFreeTCPPort(bind string, preferred int) (int, bool) {
+	try := func(port int) bool {
+		l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bind, port))
+		if err != nil {
+			return false
+		}
+		_ = l.Close()
+		return true
+	}
+	if preferred > 0 && try(preferred) {
+		return preferred, true
+	}
+	l, err := net.Listen("tcp", fmt.Sprintf("%s:0", bind))
+	if err != nil {
+		return 0, false
+	}
+	defer func() { _ = l.Close() }()
+	addr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, false
+	}
+	return addr.Port, true
+}
