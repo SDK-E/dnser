@@ -20,6 +20,8 @@ fetch_sha() {
 }
 
 SHA_ARM=$(fetch_sha "${BASE_URL}/dnser_${VERSION}_Darwin_arm64.tar.gz")
+SHA_LINUX_AMD64=$(fetch_sha "${BASE_URL}/dnser_${VERSION}_Linux_amd64.tar.gz")
+SHA_LINUX_ARM64=$(fetch_sha "${BASE_URL}/dnser_${VERSION}_Linux_arm64.tar.gz")
 SHA_INTEL=$(fetch_sha "${BASE_URL}/dnser_${VERSION}_Darwin_amd64.tar.gz")
 SHA_DMG_ARM=$(fetch_sha "${BASE_URL}/DNSer_${VERSION}_macOS_arm64.dmg")
 SHA_DMG_INTEL=$(fetch_sha "${BASE_URL}/DNSer_${VERSION}_macOS_amd64.dmg")
@@ -35,6 +37,8 @@ sed \
   -e "s|{{URL_BASE}}|$BASE_URL|g" \
   -e "s|{{SHA_ARM}}|$SHA_ARM|g" \
   -e "s|{{SHA_INTEL}}|$SHA_INTEL|g" \
+  -e "s|{{SHA_LINUX_AMD64}}|$SHA_LINUX_AMD64|g" \
+  -e "s|{{SHA_LINUX_ARM64}}|$SHA_LINUX_ARM64|g" \
   packaging/homebrew/dnser.rb.tmpl > "$WORK/tap/Formula/dnser.rb"
 
 sed \

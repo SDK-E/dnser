@@ -2,15 +2,30 @@ class Dnser < Formula
   desc "Local DNS management for development"
   homepage "https://github.com/SDK-E/dnser"
   version "{{VERSION}}"
-  license :"business-source-license"
+  license "BUSL-1.1"
 
-  on_arm do
-    url "{{URL_BASE}}/dnser_{{VERSION}}_Darwin_arm64.tar.gz"
-    sha256 "{{SHA_ARM}}"
+  livecheck do
+    url :stable
+    strategy :github_latest
   end
-  on_intel do
-    url "{{URL_BASE}}/dnser_{{VERSION}}_Darwin_amd64.tar.gz"
-    sha256 "{{SHA_INTEL}}"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "{{URL_BASE}}/dnser_{{VERSION}}_Darwin_arm64.tar.gz"
+      sha256 "{{SHA_ARM}}"
+    else
+      url "{{URL_BASE}}/dnser_{{VERSION}}_Darwin_amd64.tar.gz"
+      sha256 "{{SHA_INTEL}}"
+    end
+  end
+  on_linux do
+    if Hardware::CPU.intel?
+      url "{{URL_BASE}}/dnser_{{VERSION}}_Linux_amd64.tar.gz"
+      sha256 "{{SHA_LINUX_AMD64}}"
+    else
+      url "{{URL_BASE}}/dnser_{{VERSION}}_Linux_arm64.tar.gz"
+      sha256 "{{SHA_LINUX_ARM64}}"
+    end
   end
 
   def install
