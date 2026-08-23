@@ -19,7 +19,7 @@ const (
 	caKeyFile  = "dnser-ca-key.pem"
 
 	caOrganization = "DNSer Local CA"
-	caCommonName  = "DNSer Local Root CA"
+	caCommonName   = "DNSer Local Root CA"
 
 	caValidity = 10 * 365 * 24 * time.Hour
 )

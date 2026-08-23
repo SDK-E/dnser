@@ -7,10 +7,10 @@ import (
 )
 
 type Status struct {
-	Up        bool          `json:"up"`
-	LatencyMS int64         `json:"latency_ms"`
-	CheckedAt time.Time     `json:"checked_at"`
-	FailCount int           `json:"fail_count"`
+	Up        bool      `json:"up"`
+	LatencyMS int64     `json:"latency_ms"`
+	CheckedAt time.Time `json:"checked_at"`
+	FailCount int       `json:"fail_count"`
 }
 
 type Checker struct {

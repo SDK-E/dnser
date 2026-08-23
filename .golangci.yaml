@@ -18,5 +18,5 @@ linters:
         - (*strings.Builder).WriteString
 
 formatters:
-  default:
+  enable:
     - gofmt

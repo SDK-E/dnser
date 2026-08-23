@@ -8,7 +8,7 @@ import (
 const CurrentVersion = 1
 
 const (
-	DefaultTLD       = "test"
+	DefaultTLD         = "test"
 	DashboardSubdomain = "dnser"
 )
 

@@ -11,7 +11,7 @@ import (
 
 	"github.com/SDK-E/dnser/internal/config"
 	"github.com/SDK-E/dnser/internal/health"
-		"github.com/SDK-E/dnser/internal/logstream"
+	"github.com/SDK-E/dnser/internal/logstream"
 )
 
 type Runtime interface {
@@ -67,14 +67,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 type statusPayload struct {
-	Version     string          `json:"version"`
-	TLD         string          `json:"tld"`
-	Bind        string          `json:"bind"`
-	DNSPort     int             `json:"dns_port"`
-	Ports       config.Ports    `json:"ports"`
-	Upstreams   []string        `json:"upstreams"`
-	DashboardURL string         `json:"dashboard_url"`
-	Projects    int             `json:"projects"`
+	Version      string       `json:"version"`
+	TLD          string       `json:"tld"`
+	Bind         string       `json:"bind"`
+	DNSPort      int          `json:"dns_port"`
+	Ports        config.Ports `json:"ports"`
+	Upstreams    []string     `json:"upstreams"`
+	DashboardURL string       `json:"dashboard_url"`
+	Projects     int          `json:"projects"`
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -126,10 +126,10 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 type createProjectReq struct {
-	Domain   string `json:"domain"`
-	Port     int    `json:"port"`
-	Wildcard bool   `json:"wildcard"`
-	HTTPS    bool   `json:"https"`
+	Domain   string   `json:"domain"`
+	Port     int      `json:"port"`
+	Wildcard bool     `json:"wildcard"`
+	HTTPS    bool     `json:"https"`
 	Aliases  []string `json:"aliases,omitempty"`
 }
 

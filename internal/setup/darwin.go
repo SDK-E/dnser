@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-
 type PlatformInfo struct {
 	Name string
 }
