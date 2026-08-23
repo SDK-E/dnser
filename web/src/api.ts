@@ -8,10 +8,36 @@ export interface Record {
   type: string; name: string; value: string;
   ttl?: number; priority?: number; weight?: number; port?: number;
 }
-export interface Health { up: boolean; latency_ms: number; checked_at: string; fail_count: number }
-export interface Project {
-  domain: string; port: number; wildcard: boolean; https: boolean;
-  aliases?: string[]; records?: Record[]; health?: Health;
+export interface Route {
+  host: string; backends: string[]; tcp?: boolean; listen?: number;
+  https?: boolean; force_https?: boolean;
+}
+export interface RunConfig { command?: string; mode?: string; port?: number }
+export interface BackendHealth {
+  backend: string; host: string; tcp?: boolean;
+  up?: boolean; latency_ms?: number; checked_at?: string; fail_count?: number;
+}
+export interface DnsRecord {
+  type: string; name: string; value: string;
+  ttl?: number; priority?: number; weight?: number; port?: number;
+}
+export type Project = {
+  domain: string; path?: string; run?: RunConfig;
+  routes?: Route[]; records?: DnsRecord[]; created_at?: string;
+  backend_health?: BackendHealth[];
+};
+export type DotState = "unknown" | "up" | "down" | "starting" | "crash-looping" | "stopped";
+export interface AppInfo {
+  domain: string; path: string; framework: string; state: DotState | "failed" | "" ;
+  port: number; pid?: number; command?: string[];
+  last_error?: string; restarts: number; started_at?: string;
+}
+export interface RunnerPayload { apps: AppInfo[]; deps_missing: { [domain: string]: string } }
+export interface DoctorCheck { name: string; status: "ok" | "warn" | "fail"; detail: string }
+export interface DoctorPayload { status: string; checks: DoctorCheck[] }
+export interface DetectResult {
+  path: string; framework?: string; recipe?: string[]; port_env: boolean;
+  deps_missing?: string; suggested_domain: string;
 }
 export interface LogEvent {
   time: string; name: string; type: string; source: string; answer: string; latency_ns: number;
@@ -56,14 +82,63 @@ export const desktop = {
 export const api = {
   status: () => req<Status>("/api/v1/status"),
   projects: () => req<{ projects: Project[] }>("/api/v1/projects"),
-  createProject: (p: { domain: string; port: number; wildcard: boolean; https: boolean }) =>
-    req<Project>("/api/v1/projects", { method: "POST", body: JSON.stringify(p) }),
-  updateProject: (domain: string, patch: Partial<Pick<Project, "port" | "wildcard" | "https">>) =>
-    req<Project>(`/api/v1/projects/${domain}`, { method: "PUT", body: JSON.stringify(patch) }),
+  runner: () => req<RunnerPayload>("/api/v1/runner"),
+  doctor: () => req<DoctorPayload>("/api/v1/doctor"),
+  detect: (path: string) =>
+    req<DetectResult>("/api/v1/detect", { method: "POST", body: JSON.stringify({ path }) }),
+  createProject: (p: {
+    domain: string;
+    routes?: Route[];
+    path?: string;
+    run?: RunConfig;
+    port?: number;
+    wildcard?: boolean;
+    https?: boolean;
+  }) => req<Project>("/api/v1/projects", { method: "POST", body: JSON.stringify(p) }),
+  updateProject: (
+    domain: string,
+    patch: Partial<{
+      routes: Route[];
+      path: string;
+      run: RunConfig | null;
+    }>,
+  ) => req<Project>(`/api/v1/projects/${domain}`, { method: "PUT", body: JSON.stringify(patch) }),
   deleteProject: (domain: string) =>
     req(`/api/v1/projects/${domain}`, { method: "DELETE" }),
   addRecord: (domain: string, r: Record) =>
     req(`/api/v1/projects/${domain}/records`, { method: "POST", body: JSON.stringify(r) }),
   removeRecord: (domain: string, r: Pick<Record, "name" | "type">) =>
     req(`/api/v1/projects/${domain}/records`, { method: "DELETE", body: JSON.stringify(r) }),
+  restartApp: (domain: string) => req<AppInfo>(`/api/v1/runner/${domain}/restart`, { method: "POST" }),
+  stopApp: (domain: string) => req<AppInfo>(`/api/v1/runner/${domain}/stop`, { method: "POST" }),
+  startApp: (domain: string) => req<AppInfo>(`/api/v1/runner/${domain}/start`, { method: "POST" }),
 };
+
+export function projectURLs(p: Project, tld: string): string[] {
+  const urls: string[] = [];
+  for (const r of p.routes ?? []) {
+    if (r.tcp || !r.https) continue;
+    const host = hostOf(r.host, p.domain, tld);
+    urls.push(`https://${host}`);
+  }
+  return urls.length ? urls : [`https://${p.domain}`];
+}
+
+function hostOf(routeHost: string, domain: string, tld: string): string {
+  if (routeHost === "@") return domain;
+  if (routeHost === "*") return `*.${domain}`;
+  if (routeHost.includes(".")) return routeHost.endsWith("." + tld) ? routeHost : `${routeHost}.${tld}`;
+  return `${routeHost}.${domain}`;
+}
+
+export function stateTone(state: string | undefined): "ok" | "err" | "warn" | "info" | "default" {
+  switch (state) {
+    case "up": return "ok";
+    case "crash-looping": return "err";
+    case "starting": return "warn";
+    case "stopped": return "default";
+    case "deps-missing":
+    case "failed": return "info";
+    default: return "default";
+  }
+}

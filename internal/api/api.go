@@ -47,6 +47,7 @@ func New(rt Runtime, version string) *Server {
 	mux.HandleFunc("POST /api/v1/runner/{domain}/stop", s.handleRunnerStop)
 	mux.HandleFunc("POST /api/v1/runner/{domain}/start", s.handleRunnerStart)
 	mux.HandleFunc("GET /api/v1/doctor", s.handleDoctor)
+	mux.HandleFunc("POST /api/v1/detect", s.handleDetect)
 	mux.HandleFunc("GET /api/v1/logs", s.handleLogs)
 	mux.HandleFunc("GET /api/v1/logs/stream", s.handleLogStream)
 	mux.Handle("/", http.HandlerFunc(s.handleStatic))
