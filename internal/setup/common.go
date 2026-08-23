@@ -1,11 +1,13 @@
 package setup
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 type State struct {
@@ -83,6 +85,30 @@ const (
 
 type Runner interface {
 	CombinedOutput(name string, args ...string) ([]byte, error)
+}
+
+const trustCommandTimeout = 20 * time.Second
+
+func runWithTimeout(r Runner, name string, args ...string) ([]byte, error) {
+	if _, ok := r.(execRunner); ok {
+		cmd := exec.Command(name, args...)
+		var buf bytes.Buffer
+		cmd.Stdout = &buf
+		cmd.Stderr = &buf
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case err := <-done:
+			return buf.Bytes(), err
+		case <-time.After(trustCommandTimeout):
+			_ = cmd.Process.Kill()
+			return buf.Bytes(), fmt.Errorf("%s timed out after %s (locked keychain or missing GUI session)", name, trustCommandTimeout)
+		}
+	}
+	return r.CombinedOutput(name, args...)
 }
 
 type execRunner struct{}

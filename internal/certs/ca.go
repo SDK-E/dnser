@@ -8,7 +8,9 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"math/big"
 	"os"
@@ -50,14 +52,25 @@ func NewCA(dir string) (*CA, error) {
 	certPEM, certErr := os.ReadFile(certPath)
 	keyPEM, keyErr := os.ReadFile(keyPath)
 	if certErr == nil && keyErr == nil {
-		if err := ca.load(certPEM, keyPEM); err == nil {
-			return ca, nil
+		if err := ca.load(certPEM, keyPEM); err != nil {
+			return nil, fmt.Errorf(
+				"existing CA at %s failed to load (%w); refusing to overwrite it because systems may already trust it - remove the directory manually to mint a new CA",
+				dir, err,
+			)
 		}
+		return ca, nil
 	}
-	if err := ca.create(); err != nil {
-		return nil, err
+	if errors.Is(certErr, fs.ErrNotExist) && errors.Is(keyErr, fs.ErrNotExist) {
+		if err := ca.create(); err != nil {
+			return nil, err
+		}
+		return ca, nil
 	}
-	return ca, nil
+	missing := certPath
+	if certErr == nil {
+		missing = keyPath
+	}
+	return nil, fmt.Errorf("CA files incomplete in %s: %s is missing; restore it or remove the directory to mint a new CA", dir, missing)
 }
 
 func (c *CA) load(certPEM, keyPEM []byte) error {

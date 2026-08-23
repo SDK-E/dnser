@@ -3,6 +3,8 @@
 package setup
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -92,20 +94,29 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 		"security add-trusted-cert -r trustRoot -p ssl -p basic -k %q %q",
 		loginKeychain(), caPEMPath(dir),
 	)
-	if _, uerr := r.CombinedOutput("/bin/zsh", "-c", userScript); uerr == nil {
+	if out, uerr := runWithTimeout(r, "/bin/zsh", "-c", userScript); uerr == nil {
 		_ = os.Remove(tmpPath)
 		return caPEMPath(dir), TrustModeUser, nil
+	} else if !errors.Is(uerr, context.DeadlineExceeded) && strings.Contains(uerr.Error(), "timed out") {
+		_ = out
 	}
 
 	adminScript := fmt.Sprintf(
 		"mkdir -p %q && cp %q %q && security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain %q",
 		filepath.Dir(targetPath), tmpPath, targetPath, targetPath,
 	)
+	if _, sudoErr := r.CombinedOutput("sudo", "-n", "true"); sudoErr == nil {
+		if _, serr := runWithTimeout(r, "sudo", "-n", "/bin/sh", "-c", adminScript); serr == nil {
+			_ = os.Remove(tmpPath)
+			return targetPath, TrustModeAdmin, nil
+		}
+	}
+
 	out, aerr := r.CombinedOutput("osascript", "-e",
 		fmt.Sprintf("do shell script %q with administrator privileges", adminScript))
 	if aerr != nil {
 		_ = os.Remove(tmpPath)
-		return "", "", fmt.Errorf("trust CA failed (user and admin): %w\n%s", aerr, out)
+		return "", "", fmt.Errorf("trust CA failed (user, sudo and admin): %w\n%s", aerr, out)
 	}
 	return targetPath, TrustModeAdmin, nil
 }
@@ -137,6 +148,11 @@ func UntrustCA(r Runner, installPath, mode string) error {
 		"security remove-trusted-cert -d %q 2>/dev/null; security delete-certificate -c %q /Library/Keychains/System.keychain 2>/dev/null; rm -f %q; true",
 		installPath, caCommonName, installPath,
 	)
+	if _, sudoErr := r.CombinedOutput("sudo", "-n", "true"); sudoErr == nil {
+		if _, serr := runWithTimeout(r, "sudo", "-n", "/bin/sh", "-c", script); serr == nil {
+			return nil
+		}
+	}
 	out, err := r.CombinedOutput("osascript", "-e",
 		fmt.Sprintf("do shell script %q with administrator privileges", script))
 	if err != nil {
