@@ -113,6 +113,10 @@ func RestoreDNS(r Runner, saved map[string][]string) error {
 	return nil
 }
 
+func RevertDesktopState(r Runner, st *State) error {
+	return nil
+}
+
 func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 	targetPath := filepath.Join(os.Getenv("ProgramData"), "DNSer", "dnser-ca.pem")
 	tmpPath, err := WriteTempFile(dir, "dnser-ca-*.pem", caPEM)

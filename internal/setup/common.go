@@ -20,6 +20,8 @@ type State struct {
 	CATrusted        bool                `json:"ca_trusted,omitempty"`
 	CAInstallPath    string              `json:"ca_install_path,omitempty"`
 	ServiceInstalled bool                `json:"service_installed,omitempty"`
+	ResolverDomains  []string            `json:"resolver_domains,omitempty"`
+	CapGranted       bool                `json:"cap_granted,omitempty"`
 }
 
 func LoadState(dir string) (*State, error) {
@@ -152,6 +154,22 @@ func NewDryRunner(failOn ...string) *dryRunner {
 }
 
 func (d *dryRunner) Commands() []string { return d.commands }
+
+func ShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func ShellJoin(parts ...string) string {
+	out := make([]string, len(parts))
+	for i, p := range parts {
+		out[i] = ShellQuote(p)
+	}
+	return strings.Join(out, " ")
+}
+
+func shellQuote(s string) string {
+	return ShellQuote(s)
+}
 
 func usableUpstreams(servers []string) []string {
 	out := make([]string, 0, len(servers))

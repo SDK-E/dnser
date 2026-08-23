@@ -171,6 +171,34 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 	return targetPath, mode, nil
 }
 
+func GrantBindCap(r Runner, exe string) error {
+	out, err := r.CombinedOutput("pkexec", "/sbin/setcap", "cap_net_bind_service=+ep", exe)
+	if err != nil {
+		out2, err2 := r.CombinedOutput("pkexec", "/usr/sbin/setcap", "cap_net_bind_service=+ep", exe)
+		if err2 != nil {
+			return fmt.Errorf("setcap %s: %w\n%s / %v\n%s", exe, err, out, err2, out2)
+		}
+	}
+	return nil
+}
+
+func DropBindCap(r Runner, exe string) error {
+	_, _ = r.CombinedOutput("pkexec", "/sbin/setcap", "-r", exe)
+	_, _ = r.CombinedOutput("pkexec", "/usr/sbin/setcap", "-r", exe)
+	return nil
+}
+
+func RevertDesktopState(r Runner, st *State) error {
+	if !st.CapGranted {
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	return DropBindCap(r, exe)
+}
+
 func UntrustCA(r Runner, installPath string, _ string) error {
 	script := fmt.Sprintf("rm -f %q", installPath)
 	if out, err := r.CombinedOutput("pkexec", "/bin/sh", "-c", script); err != nil {

@@ -225,6 +225,14 @@ func newUnsetupCmd() *cobra.Command {
 				}
 				fmt.Fprintln(out, "  done")
 			}
+			if len(state.ResolverDomains) > 0 || state.CapGranted {
+				fmt.Fprintln(out, "Removing desktop routing...")
+				if err := setup.RevertDesktopState(r, state); err != nil {
+					fmt.Fprintf(out, "  warning: %v\n", err)
+				} else {
+					fmt.Fprintln(out, "  done")
+				}
+			}
 			if err := setup.ClearState(dir); err != nil {
 				return err
 			}

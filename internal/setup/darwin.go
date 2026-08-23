@@ -149,6 +149,46 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 	return targetPath, TrustModeAdmin, nil
 }
 
+func resolverPath(domain string) string {
+	return filepath.Join("/etc/resolver", domain)
+}
+
+func WriteResolverDomain(r Runner, domain, bind string, port int) error {
+	script := fmt.Sprintf(
+		"mkdir -p /etc/resolver && printf 'nameserver %s\\nport %d\\n' > %s",
+		bind, port, shellQuote(resolverPath(domain)),
+	)
+	out, err := elevatedScript(r, script)
+	if err != nil {
+		return fmt.Errorf("write /etc/resolver/%s: %w\n%s", domain, err, out)
+	}
+	return nil
+}
+
+func RemoveResolverFiles(r Runner, domains []string) error {
+	if len(domains) == 0 {
+		return nil
+	}
+	parts := make([]string, 0, len(domains)+1)
+	for _, d := range domains {
+		parts = append(parts, "rm -f "+shellQuote(resolverPath(d)))
+	}
+	parts = append(parts, "rmdir /etc/resolver 2>/dev/null || true")
+	out, err := elevatedScript(r, strings.Join(parts, "; "))
+	if err != nil {
+		return fmt.Errorf("remove resolver files: %w\n%s", err, out)
+	}
+	return nil
+}
+
+func elevatedScript(r Runner, script string) ([]byte, error) {
+	if _, sudoErr := runWithTimeout(r, "sudo", "-n", "true"); sudoErr == nil {
+		return runWithTimeout(r, "sudo", "-n", "/bin/sh", "-c", script)
+	}
+	return r.CombinedOutput("osascript", "-e",
+		fmt.Sprintf("do shell script %q with administrator privileges", script))
+}
+
 func caPEMPath(dir string) string {
 	return filepath.Join(dir, "certs", "dnser-ca.pem")
 }
@@ -159,6 +199,10 @@ func loginKeychain() string {
 		return "login.keychain-db"
 	}
 	return filepath.Join(home, "Library", "Keychains", "login.keychain-db")
+}
+
+func RevertDesktopState(r Runner, st *State) error {
+	return RemoveResolverFiles(r, st.ResolverDomains)
 }
 
 func UntrustCA(r Runner, installPath, mode string) error {
