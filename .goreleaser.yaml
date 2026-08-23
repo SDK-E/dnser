@@ -46,4 +46,4 @@ changelog:
       - "^test:"
 
 release:
-  draft: true
+  draft: false

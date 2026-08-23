@@ -21,16 +21,21 @@ case "$OS" in
 esac
 
 if [ -z "$DNSER_VERSION" ]; then
-  DNSER_URL="https://github.com/$REPO/releases/latest/download/dnser_Latest_${OS^}_$ARCH.tar.gz"
+  DNSER_URL="https://api.github.com/repos/$REPO/releases/latest"
+  ASSET="dnser_${OS^}_$ARCH.tar.gz"
+  DOWNLOAD_URL=$(curl -fsSL "$DNSER_URL" | sed -n "s|.*\"browser_download_url\": *\"\([^\"]*/$ASSET\)\".*|\1|p" | head -n1)
+  if [ -z "$DOWNLOAD_URL" ]; then
+    echo "could not resolve latest release asset $ASSET"; exit 1
+  fi
 else
-  DNSER_URL="https://github.com/$REPO/releases/download/$DNSER_VERSION/dnser_${DNSER_VERSION}_${OS^}_$ARCH.tar.gz"
+  DOWNLOAD_URL="https://github.com/$REPO/releases/download/$DNSER_VERSION/dnser_${DNSER_VERSION}_${OS^}_$ARCH.tar.gz"
 fi
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-echo "Downloading $DNSER_URL"
-curl -fsSL "$DNSER_URL" | tar -xz -C "$TMP"
+echo "Downloading $DOWNLOAD_URL"
+curl -fsSL "$DOWNLOAD_URL" | tar -xz -C "$TMP"
 
 if [ -w "$INSTALL_DIR" ]; then
   mv "$TMP/dnser" "$INSTALL_DIR/dnser"
