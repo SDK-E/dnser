@@ -101,16 +101,16 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 	)
 	elevatedScript := fmt.Sprintf("Start-Process powershell -Verb RunAs -Wait -ArgumentList '-Command','%s'", script)
 	directScript := script
-	if isAdmin, adminErr := r.CombinedOutput("powershell", "-Command",
-		"([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"); adminErr == nil &&
+	isAdmin, adminErr := runWithTimeout(r, "powershell", "-Command",
+		"([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)")
+	if adminErr == nil &&
 		strings.Contains(strings.ToLower(string(isAdmin)), "true") {
-		if out, err := r.CombinedOutput("powershell", "-Command", directScript); err == nil {
-			_ = out
+		if _, err := runWithTimeout(r, "powershell", "-Command", directScript); err == nil {
 			_ = os.Remove(tmpPath)
 			return targetPath, TrustModeAdmin, nil
 		}
 	}
-	out, err := r.CombinedOutput("powershell", "-Command", elevatedScript)
+	out, err := runWithTimeout(r, "powershell", "-Command", elevatedScript)
 	if err != nil {
 		return "", "", fmt.Errorf("trust CA via elevation: %w\n%s", err, out)
 	}

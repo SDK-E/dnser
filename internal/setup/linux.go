@@ -121,7 +121,7 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 		if out, err := r.CombinedOutput("sudo", "/bin/sh", "-c", script); err != nil {
 			return "", "", fmt.Errorf("install CA cert via sudo: %w\n%s", err, out)
 		}
-	} else if out, err := r.CombinedOutput("pkexec", "/bin/sh", "-c", script); err != nil {
+	} else if out, err := runWithTimeout(r, "pkexec", "/bin/sh", "-c", script); err != nil {
 		return "", "", fmt.Errorf("install CA cert: %w\n%s", err, out)
 	}
 	updateOut, updateErr := r.CombinedOutput("update-ca-certificates")
