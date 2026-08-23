@@ -17,10 +17,11 @@ import (
 )
 
 type Route struct {
-	Host   string
-	Target string
-	HTTPS  bool
-	Port   int
+	Host       string
+	Target     string
+	HTTPS      bool
+	ForceHTTPS bool
+	Port       int
 }
 
 type Router struct {
@@ -114,10 +115,10 @@ func NewServer(router *Router, manager *certs.Manager) *Server {
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	rt, ok := s.router.Lookup(r.Host)
 	switch {
-	case ok && !rt.HTTPS:
-		s.proxy(w, r, rt)
-	case ok && rt.HTTPS:
+	case ok && rt.ForceHTTPS && rt.HTTPS:
 		http.Redirect(w, r, "https://"+hostOnly(r.Host)+r.URL.RequestURI(), http.StatusPermanentRedirect)
+	case ok:
+		s.proxy(w, r, rt)
 	default:
 		writeLanding(w, r)
 	}

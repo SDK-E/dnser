@@ -38,14 +38,15 @@ type Record struct {
 }
 
 type Project struct {
-	Domain    string    `json:"domain"`
-	Port      int       `json:"port"`
-	Wildcard  bool      `json:"wildcard"`
-	HTTPS     bool      `json:"https"`
-	Aliases   []string  `json:"aliases,omitempty"`
-	Records   []Record  `json:"records,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Domain     string    `json:"domain"`
+	Port       int       `json:"port"`
+	Wildcard   bool      `json:"wildcard"`
+	HTTPS      bool      `json:"https"`
+	ForceHTTPS bool      `json:"force_https,omitempty"`
+	Aliases    []string  `json:"aliases,omitempty"`
+	Records    []Record  `json:"records,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type Config struct {

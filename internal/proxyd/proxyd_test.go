@@ -79,7 +79,7 @@ func TestProxyHTTPPlainAndRedirect(t *testing.T) {
 	router := NewRouter()
 	router.Replace([]Route{
 		{Host: "plain.dev", Target: strings.TrimPrefix(upstream.URL, "http://"), Port: 1},
-		{Host: "myproject.test", Target: strings.TrimPrefix(upstream.URL, "http://"), HTTPS: true, Port: 1},
+		{Host: "myproject.test", Target: strings.TrimPrefix(upstream.URL, "http://"), HTTPS: true, ForceHTTPS: true, Port: 1},
 	})
 
 	srv := NewServer(router, manager)

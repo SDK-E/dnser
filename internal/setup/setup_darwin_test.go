@@ -3,6 +3,7 @@
 package setup
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -56,33 +57,60 @@ func TestConfigureDNSSavesPreviousServers(t *testing.T) {
 	}
 }
 
-func TestTrustCAUsesAdminPrompt(t *testing.T) {
+func TestTrustCAPrefersSilentUserDomain(t *testing.T) {
 	dir := t.TempDir()
 	r := NewDryRunner()
-	path, err := TrustCA(r, []byte("FAKE-PEM"), dir)
+	path, mode, err := TrustCA(r, []byte("FAKE-PEM"), dir)
 	if err != nil {
 		t.Fatalf("trust CA: %v", err)
+	}
+	if mode != TrustModeUser {
+		t.Errorf("mode = %q, want user (silent first)", mode)
 	}
 	if path != "/Library/Application Support/DNSer/dnser-ca.pem" {
 		t.Errorf("install path = %q", path)
 	}
 	joined := strings.Join(r.Commands(), "\n")
-	if !strings.Contains(joined, "add-trusted-cert") {
-		t.Errorf("missing add-trusted-cert in:\n%s", joined)
+	if !strings.Contains(joined, "add-trusted-cert -r trustRoot") {
+		t.Errorf("missing user-domain trust command in:\n%s", joined)
 	}
-	if !strings.Contains(joined, "with administrator privileges") {
-		t.Errorf("admin elevation missing:\n%s", joined)
+	if strings.Contains(joined, "administrator privileges") {
+		t.Errorf("admin prompt should not be needed for user trust:\n%s", joined)
+	}
+}
+
+func TestTrustCAFallsBackToAdmin(t *testing.T) {
+	r := NewDryRunner()
+	r.failOn["/bin/zsh"] = fmt.Errorf("user trust denied")
+	dir := t.TempDir()
+	_, mode, err := TrustCA(r, []byte("FAKE-PEM"), dir)
+	if err != nil {
+		t.Fatalf("trust CA fallback: %v", err)
+	}
+	if mode != TrustModeAdmin {
+		t.Errorf("mode = %q, want admin after user failure", mode)
+	}
+	if joined := strings.Join(r.Commands(), "\n"); !strings.Contains(joined, "-d -r trustRoot") {
+		t.Errorf("admin trust command missing:\n%s", joined)
 	}
 }
 
 func TestUntrustCARevertsExactly(t *testing.T) {
 	r := NewDryRunner()
-	err := UntrustCA(r, "/Library/Application Support/DNSer/dnser-ca.pem")
-	if err != nil {
+	if err := UntrustCA(r, "/Library/Application Support/DNSer/dnser-ca.pem", TrustModeAdmin); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(r.Commands(), "\n")
 	if !strings.Contains(joined, "remove-trusted-cert") || !strings.Contains(joined, "rm -f") {
 		t.Errorf("untrust commands incomplete:\n%s", joined)
+	}
+
+	r2 := NewDryRunner()
+	if err := UntrustCA(r2, "/Library/Application Support/DNSer/dnser-ca.pem", TrustModeUser); err != nil {
+		t.Fatal(err)
+	}
+	joined2 := strings.Join(r2.Commands(), "\n")
+	if !strings.Contains(joined2, "remove-trusted-cert") || strings.Contains(joined2, "administrator privileges") {
+		t.Errorf("user untrust must be silent and complete:\n%s", joined2)
 	}
 }

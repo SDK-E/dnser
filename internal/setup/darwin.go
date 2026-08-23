@@ -13,6 +13,8 @@ type PlatformInfo struct {
 	Name string
 }
 
+const caCommonName = "DNSer Local Root CA"
+
 func Platform() PlatformInfo {
 	return PlatformInfo{Name: "darwin"}
 }
@@ -79,29 +81,57 @@ func RestoreDNS(r Runner, saved map[string][]string) error {
 	return nil
 }
 
-func TrustCA(r Runner, caPEM []byte, dir string) (string, error) {
+func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 	tmpPath, err := WriteTempFile(dir, "dnser-ca-*.pem", caPEM)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	targetPath := filepath.Join("/Library/Application Support/DNSer", "dnser-ca.pem")
-	script := fmt.Sprintf(
+
+	userScript := fmt.Sprintf(
+		"mkdir -p %q && cp %q %q && security add-trusted-cert -r trustRoot -p ssl -p basic -k %q %q",
+		filepath.Dir(targetPath), tmpPath, targetPath, loginKeychain(), targetPath,
+	)
+	if _, uerr := r.CombinedOutput("/bin/zsh", "-c", userScript); uerr == nil {
+		_ = os.Remove(tmpPath)
+		return targetPath, TrustModeUser, nil
+	}
+
+	adminScript := fmt.Sprintf(
 		"mkdir -p %q && cp %q %q && security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain %q",
 		filepath.Dir(targetPath), tmpPath, targetPath, targetPath,
 	)
-	out, err := r.CombinedOutput("osascript", "-e",
-		fmt.Sprintf("do shell script %q with administrator privileges", script))
-	if err != nil {
-		return "", fmt.Errorf("trust CA via admin prompt: %w\n%s", err, out)
+	out, aerr := r.CombinedOutput("osascript", "-e",
+		fmt.Sprintf("do shell script %q with administrator privileges", adminScript))
+	if aerr != nil {
+		_ = os.Remove(tmpPath)
+		return "", "", fmt.Errorf("trust CA failed (user and admin): %w\n%s", aerr, out)
 	}
-	_ = os.Remove(tmpPath)
-	return targetPath, nil
+	return targetPath, TrustModeAdmin, nil
 }
 
-func UntrustCA(r Runner, installPath string) error {
+func loginKeychain() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "login.keychain-db"
+	}
+	return filepath.Join(home, "Library", "Keychains", "login.keychain-db")
+}
+
+func UntrustCA(r Runner, installPath, mode string) error {
+	if mode == TrustModeUser {
+		script := fmt.Sprintf(
+			"security remove-trusted-cert %q 2>/dev/null; security delete-certificate -c %q 2>/dev/null; rm -f %q; true",
+			installPath, caCommonName, installPath,
+		)
+		if _, err := r.CombinedOutput("/bin/zsh", "-c", script); err != nil {
+			return fmt.Errorf("untrust CA (user): %w", err)
+		}
+		return nil
+	}
 	script := fmt.Sprintf(
-		"security remove-trusted-cert -d %q 2>/dev/null; rm -f %q",
-		installPath, installPath,
+		"security remove-trusted-cert -d %q 2>/dev/null; security delete-certificate -c %q /Library/Keychains/System.keychain 2>/dev/null; rm -f %q; true",
+		installPath, caCommonName, installPath,
 	)
 	out, err := r.CombinedOutput("osascript", "-e",
 		fmt.Sprintf("do shell script %q with administrator privileges", script))

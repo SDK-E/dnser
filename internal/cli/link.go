@@ -11,12 +11,13 @@ import (
 
 func newLinkCmd() *cobra.Command {
 	var (
-		domain   string
-		port     int
-		tld      string
-		wildcard bool
-		noHTTPS  bool
-		aliases  []string
+		domain     string
+		port       int
+		tld        string
+		wildcard   bool
+		noHTTPS    bool
+		forceHTTPS bool
+		aliases    []string
 	)
 	cmd := &cobra.Command{
 		Use:   "link --domain=myproject",
@@ -72,16 +73,18 @@ func newLinkCmd() *cobra.Command {
 						c.Projects[i].Port = port
 						c.Projects[i].Wildcard = wildcard || c.Projects[i].Wildcard
 						c.Projects[i].HTTPS = !noHTTPS || c.Projects[i].HTTPS
+						c.Projects[i].ForceHTTPS = forceHTTPS
 						c.Projects[i].Aliases = mergeUnique(c.Projects[i].Aliases, normAliases)
 						return
 					}
 				}
 				c.Projects = append(c.Projects, config.Project{
-					Domain:   fullDomain,
-					Port:     port,
-					Wildcard: wildcard,
-					HTTPS:    !noHTTPS,
-					Aliases:  normAliases,
+					Domain:     fullDomain,
+					Port:       port,
+					Wildcard:   wildcard,
+					HTTPS:      !noHTTPS,
+					ForceHTTPS: forceHTTPS,
+					Aliases:    normAliases,
 				})
 			})
 			if err != nil {
@@ -108,7 +111,8 @@ func newLinkCmd() *cobra.Command {
 	cmd.Flags().IntVar(&port, "port", 0, "local port to proxy to (auto-detected when omitted)")
 	cmd.Flags().StringVar(&tld, "tld", "", "override TLD for this link")
 	cmd.Flags().BoolVar(&wildcard, "wildcard", false, "resolve all subdomains (*.domain)")
-	cmd.Flags().BoolVar(&noHTTPS, "http", false, "disable HTTPS proxying for this project")
+	cmd.Flags().BoolVar(&noHTTPS, "no-https", false, "disable TLS for this project")
+	cmd.Flags().BoolVar(&forceHTTPS, "force-https", false, "redirect plain HTTP to HTTPS")
 	cmd.Flags().StringSliceVar(&aliases, "alias", nil, "additional hostname(s) for this project")
 	return cmd
 }

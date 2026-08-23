@@ -159,16 +159,16 @@ func (rt *Runtime) applyRoutes(cfg config.Config) {
 		}
 		target := fmt.Sprintf("%s:%d", cfg.Settings.Bind, p.Port)
 		routes = append(routes, proxyd.Route{
-			Host: p.Domain, Target: target, HTTPS: p.HTTPS, Port: p.Port,
+			Host: p.Domain, Target: target, HTTPS: p.HTTPS, ForceHTTPS: p.ForceHTTPS, Port: p.Port,
 		})
 		if p.Wildcard {
 			routes = append(routes, proxyd.Route{
-				Host: "*." + p.Domain, Target: target, HTTPS: p.HTTPS, Port: p.Port,
+				Host: "*." + p.Domain, Target: target, HTTPS: p.HTTPS, ForceHTTPS: p.ForceHTTPS, Port: p.Port,
 			})
 		}
 		for _, a := range p.Aliases {
 			routes = append(routes, proxyd.Route{
-				Host: a, Target: target, HTTPS: p.HTTPS, Port: p.Port,
+				Host: a, Target: target, HTTPS: p.HTTPS, ForceHTTPS: p.ForceHTTPS, Port: p.Port,
 			})
 		}
 	}

@@ -2,8 +2,11 @@ package cli
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -73,6 +76,10 @@ func newSetupCmd() *cobra.Command {
 				fmt.Fprintln(out, "   already installed (mode: "+state.ServiceMode+")")
 			}
 
+			if state.ServiceMode == "root" {
+				bounceIfStale(out, errOut, cfg, dir)
+			}
+
 			fmt.Fprintln(out, "2. Verifying dnser answers on 127.0.0.1:53 ...")
 			probeErr := dnscore.ProbeLocal(cfg.Bind, 53, dashDomain)
 			if probeErr != nil {
@@ -102,15 +109,21 @@ func newSetupCmd() *cobra.Command {
 
 			if !skipCA && !state.CATrusted {
 				ca, _ := certs.NewCA(dir + "/certs")
-				fmt.Fprintln(out, "4. Trusting DNSer local CA (admin authorization may be requested)...")
-				path, err := setup.TrustCA(r, ca.CertificatePEM(), dir)
-				if err != nil {
-					fmt.Fprintf(errOut, "   warning: CA trust failed: %v\n", err)
+				fmt.Fprintln(out, "4. Trusting DNSer local CA...")
+				path, mode, terr := setup.TrustCA(r, ca.CertificatePEM(), dir)
+				if terr != nil {
+					fmt.Fprintf(errOut, "   warning: CA trust failed: %v\n", terr)
 					fmt.Fprintln(errOut, "   https:// domains will show certificate warnings until trusted; re-run `dnser setup`.")
 				} else {
 					state.CATrusted = true
 					state.CAInstallPath = path
-					fmt.Fprintf(out, "   CA installed (%s)\n", path)
+					state.CATrustMode = mode
+					where := "your user keychain (silent)"
+					if mode == setup.TrustModeAdmin {
+						where = "System keychain"
+					}
+					fmt.Fprintf(out, "   trusted via %s\n", where)
+					fmt.Fprintln(out, "   restart your browser to pick up the new trust settings")
 				}
 			} else if state.CATrusted {
 				fmt.Fprintln(out, "4. Local CA already trusted")
@@ -170,7 +183,7 @@ func newUnsetupCmd() *cobra.Command {
 			}
 			if state.CATrusted {
 				fmt.Fprintln(out, "Removing trusted CA...")
-				if err := setup.UntrustCA(r, state.CAInstallPath); err != nil {
+				if err := setup.UntrustCA(r, state.CAInstallPath, state.CATrustMode); err != nil {
 					fmt.Fprintf(out, "  warning: %v\n", err)
 				} else {
 					fmt.Fprintln(out, "  done")
@@ -198,6 +211,41 @@ func prompt(out interface{ Write([]byte) (int, error) }, q string) string {
 	line, _ := reader.ReadString('\n')
 	return strings.TrimSpace(line)
 }
+
+func bounceIfStale(out, errOut interface{ Write([]byte) (int, error) }, st config.Settings, dir string) {
+	running := daemonAPIVersion(st)
+	if running == "" || running == version {
+		return
+	}
+	fmt.Fprintf(out, "   upgrading running daemon %s -> %s (authorization may be requested)...\n", running, version)
+	script := fmt.Sprintf("launchctl kickstart -k system/%s", label)
+	o, err := exec.Command("osascript", "-e",
+		fmt.Sprintf("do shell script %q with administrator privileges", script)).CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(errOut, "   warning: could not restart privileged daemon: %v\n%s\n", err, o)
+		return
+	}
+	time.Sleep(1500 * time.Millisecond)
+	_ = dir
+}
+
+func daemonAPIVersion(st config.Settings) string {
+	client := &http.Client{Timeout: 1200 * time.Millisecond}
+	resp, err := client.Get(fmt.Sprintf("http://%s:%d/api/v1/status", st.Bind, st.Ports.UI))
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var payload struct {
+		Version string `json:"version"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&payload) != nil {
+		return ""
+	}
+	return payload.Version
+}
+
+const label = "enterprises.sdk.dnser"
 
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {

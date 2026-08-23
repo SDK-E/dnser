@@ -126,11 +126,12 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 type createProjectReq struct {
-	Domain   string   `json:"domain"`
-	Port     int      `json:"port"`
-	Wildcard bool     `json:"wildcard"`
-	HTTPS    bool     `json:"https"`
-	Aliases  []string `json:"aliases,omitempty"`
+	Domain     string   `json:"domain"`
+	Port       int      `json:"port"`
+	Wildcard   bool     `json:"wildcard"`
+	HTTPS      bool     `json:"https"`
+	ForceHTTPS bool     `json:"force_https,omitempty"`
+	Aliases    []string `json:"aliases,omitempty"`
 }
 
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
@@ -151,16 +152,18 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 				c.Projects[i].Port = req.Port
 				c.Projects[i].Wildcard = req.Wildcard || c.Projects[i].Wildcard
 				c.Projects[i].HTTPS = req.HTTPS || c.Projects[i].HTTPS
+				c.Projects[i].ForceHTTPS = req.ForceHTTPS
 				c.Projects[i].Aliases = mergeAliases(c.Projects[i].Aliases, req.Aliases)
 				return
 			}
 		}
 		c.Projects = append(c.Projects, config.Project{
-			Domain:   domain,
-			Port:     req.Port,
-			Wildcard: req.Wildcard,
-			HTTPS:    req.HTTPS,
-			Aliases:  req.Aliases,
+			Domain:     domain,
+			Port:       req.Port,
+			Wildcard:   req.Wildcard,
+			HTTPS:      req.HTTPS,
+			ForceHTTPS: req.ForceHTTPS,
+			Aliases:    req.Aliases,
 		})
 	})
 	if err != nil {

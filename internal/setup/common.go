@@ -13,6 +13,7 @@ type State struct {
 	DNSApplied       bool                `json:"dns_applied,omitempty"`
 	ResolvBackup     string              `json:"resolv_backup,omitempty"`
 	ServiceMode      string              `json:"service_mode,omitempty"`
+	CATrustMode      string              `json:"ca_trust_mode,omitempty"`
 	CATrusted        bool                `json:"ca_trusted,omitempty"`
 	CAInstallPath    string              `json:"ca_install_path,omitempty"`
 	ServiceInstalled bool                `json:"service_installed,omitempty"`
@@ -74,6 +75,11 @@ func ClearState(dir string) error {
 	}
 	return err
 }
+
+const (
+	TrustModeUser  = "user"
+	TrustModeAdmin = "admin"
+)
 
 type Runner interface {
 	CombinedOutput(name string, args ...string) ([]byte, error)
