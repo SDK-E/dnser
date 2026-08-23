@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -24,6 +25,9 @@ func TestE2E_TrustStoreValidatesLeafWithoutPinnedCA(t *testing.T) {
 	case "darwin", "linux", "windows":
 	default:
 		t.Skipf("no trust flow for %s", runtime.GOOS)
+	}
+	if runtime.GOOS == "darwin" && os.Getenv("CI") != "" {
+		t.Skip("darwin trust store is exercised on developer machines; runner securityd prompts are unbounded")
 	}
 
 	home := t.TempDir()
