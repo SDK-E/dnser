@@ -1,0 +1,49 @@
+version: 2
+
+project_name: dnser
+
+before:
+  hooks:
+    - cmd: pnpm --dir web install --frozen-lockfile
+    - cmd: pnpm --dir web build
+
+builds:
+  - id: dnser
+    main: ./cmd/dnser
+    binary: dnser
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/SDK-E/dnser/internal/cli.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ title .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^test:"
+
+release:
+  draft: true
