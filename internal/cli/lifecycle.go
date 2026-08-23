@@ -69,7 +69,7 @@ func runForeground(cmd *cobra.Command, bindPort int) error {
 	fmt.Fprintf(out, "  Dashboard http://%s:%d  |  https://%s\n", st.Bind, st.Ports.UI, config.DashboardDomain(st.TLD))
 	if state, _ := setup.LoadState(mustConfigDir()); state.DNSApplied && rt.DNSPort() != 53 {
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, "  ⚠ SYSTEM DNS POINTS AT 127.0.0.1:53 BUT DN SERVES ON ANOTHER PORT")
+		fmt.Fprintln(out, "  ⚠ SYSTEM DNS POINTS AT 127.0.0.1:53 BUT DNSER SERVES ON ANOTHER PORT")
 		fmt.Fprintln(out, "  ⚠ name resolution will fail. Fix with: sudo dnser start --bind-port 53")
 	}
 
@@ -79,14 +79,23 @@ func runForeground(cmd *cobra.Command, bindPort int) error {
 	fmt.Fprintln(out, "\nshutting down...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*1000*1000*1000)
 	defer cancel()
-	return rt.Shutdown(shutdownCtx)
+	if err := rt.Shutdown(shutdownCtx); err != nil {
+		restoreDNSIfApplied(out)
+		return err
+	}
+	restoreDNSIfApplied(out)
+	return nil
 }
 
 func newStopCmd() *cobra.Command {
-	return &cobra.Command{
+	var keepDNS bool
+	cmd := &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the DNSer daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !keepDNS {
+				restoreDNSIfApplied(cmd.OutOrStdout())
+			}
 			mgr := service.NewManager()
 			if err := mgr.Stop(); err != nil {
 				return err
@@ -98,6 +107,24 @@ func newStopCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&keepDNS, "keep-dns", false, "leave system resolver pointing at 127.0.0.1 (used internally by restart)")
+	return cmd
+}
+
+func restoreDNSIfApplied(out interface{ Write([]byte) (int, error) }) {
+	dir := mustConfigDir()
+	state, err := setup.LoadState(dir)
+	if err != nil || !state.DNSApplied || len(state.DNSServices) == 0 {
+		return
+	}
+	if err := setup.RestoreDNS(setup.SystemRunner(), state.DNSServices); err != nil {
+		fmt.Fprintf(out, "warning: could not restore system DNS: %v\n", err)
+		return
+	}
+	state.DNSApplied = false
+	state.DNSServices = nil
+	_ = setup.SaveState(dir, state)
+	fmt.Fprintln(out, "system DNS restored to your network's defaults")
 }
 
 func newRestartCmd() *cobra.Command {

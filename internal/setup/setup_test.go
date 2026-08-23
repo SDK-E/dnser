@@ -70,3 +70,16 @@ func TestPlatformAvailable(t *testing.T) {
 		t.Errorf("system runner broken: out=%q err=%v", out, err)
 	}
 }
+
+func TestUsableUpstreamsFiltersLoopbackAndDedups(t *testing.T) {
+	got := usableUpstreams([]string{"127.0.0.1", "192.168.1.1", "", "192.168.1.1", "::1", "9.9.9.9"})
+	want := []string{"192.168.1.1", "9.9.9.9"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v want %v", got, want)
+		}
+	}
+}

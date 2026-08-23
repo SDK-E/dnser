@@ -49,6 +49,29 @@ func GetDNSServers(r Runner, service string) ([]string, error) {
 	return strings.Fields(text), nil
 }
 
+func ReassertDNS(r Runner, bind string, saved map[string][]string) error {
+	for svc := range saved {
+		out, err := r.CombinedOutput("networksetup", "-setdnsservers", svc, bind)
+		if err != nil {
+			return fmt.Errorf("set dns for %s: %w\n%s", svc, err, out)
+		}
+	}
+	return nil
+}
+
+func CaptureDNS(r Runner) []string {
+	services, err := ListDNSServices(r)
+	if err != nil {
+		return nil
+	}
+	var all []string
+	for _, svc := range services {
+		prev, _ := GetDNSServers(r, svc)
+		all = append(all, prev...)
+	}
+	return usableUpstreams(all)
+}
+
 func ConfigureDNS(r Runner, bind string) (map[string][]string, error) {
 	services, err := ListDNSServices(r)
 	if err != nil {

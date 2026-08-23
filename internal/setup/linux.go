@@ -19,6 +19,21 @@ func Platform() PlatformInfo {
 
 const resolvConf = "/etc/resolv.conf"
 
+func CaptureDNS(_ Runner) []string {
+	data, err := os.ReadFile(resolvConf)
+	if err != nil {
+		return nil
+	}
+	var servers []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(line, "nameserver "); ok {
+			servers = append(servers, strings.TrimSpace(rest))
+		}
+	}
+	return usableUpstreams(servers)
+}
+
 func useResolved(r Runner) bool {
 	_, err := r.CombinedOutput("resolvectl", "version")
 	return err == nil

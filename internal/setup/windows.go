@@ -60,6 +60,19 @@ func isIPLine(s string) bool {
 	return s != "" && (s[0] >= '0' && s[0] <= '9' || strings.Contains(s, ":"))
 }
 
+func CaptureDNS(r Runner) []string {
+	ifaces, err := activeInterfaces(r)
+	if err != nil {
+		return nil
+	}
+	var all []string
+	for _, iface := range ifaces {
+		prev, _ := GetDNSServers(r, iface)
+		all = append(all, prev...)
+	}
+	return usableUpstreams(all)
+}
+
 func ConfigureDNS(r Runner, bind string) (map[string][]string, error) {
 	ifaces, err := activeInterfaces(r)
 	if err != nil {

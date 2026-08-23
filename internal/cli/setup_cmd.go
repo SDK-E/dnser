@@ -110,6 +110,23 @@ func newSetupCmd() *cobra.Command {
 				fmt.Fprintln(out, "3. System resolver already points at dnser")
 			} else {
 				fmt.Fprintln(out, "3. Pointing system DNS at "+cfg.Bind+" ...")
+				lan := setup.CaptureDNS(r)
+				if len(lan) > 0 {
+					seen := map[string]bool{}
+					merged := make([]string, 0, len(lan)+len(cfg.Upstreams))
+					for _, u := range append(append([]string{}, lan...), cfg.Upstreams...) {
+						if !seen[u] {
+							seen[u] = true
+							merged = append(merged, u)
+						}
+					}
+					if len(merged) > 6 {
+						merged = merged[:6]
+					}
+					_ = store.Update(func(c *config.Config) { c.Settings.Upstreams = merged })
+					cfg = store.Settings()
+					fmt.Fprintf(out, "   forwarding to your network's resolvers first: %s\n", strings.Join(lan, ", "))
+				}
 				saved, err := setup.ConfigureDNS(r, cfg.Bind)
 				if err != nil {
 					return fmt.Errorf("configure DNS resolver: %w", err)
@@ -238,7 +255,11 @@ func bounceIfStale(out, errOut interface{ Write([]byte) (int, error) }, st confi
 		return
 	}
 	time.Sleep(1500 * time.Millisecond)
-	_ = dir
+	if state, serr := setup.LoadState(dir); serr == nil && state.DNSApplied && len(state.DNSServices) > 0 {
+		if rerr := setup.ReassertDNS(setup.SystemRunner(), st.Bind, state.DNSServices); rerr != nil {
+			fmt.Fprintf(errOut, "   warning: could not re-assert system DNS after upgrade: %v\n", rerr)
+		}
+	}
 }
 
 func daemonAPIVersion(st config.Settings) string {

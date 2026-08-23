@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -158,6 +159,23 @@ func NewDryRunner(failOn ...string) *dryRunner {
 }
 
 func (d *dryRunner) Commands() []string { return d.commands }
+
+func usableUpstreams(servers []string) []string {
+	out := make([]string, 0, len(servers))
+	seen := map[string]bool{}
+	for _, srv := range servers {
+		srv = strings.TrimSpace(srv)
+		if srv == "" || seen[srv] {
+			continue
+		}
+		if srv == "127.0.0.1" || srv == "::1" || srv == "0.0.0.0" {
+			continue
+		}
+		seen[srv] = true
+		out = append(out, srv)
+	}
+	return out
+}
 
 func WriteTempFile(dir, pattern string, data []byte) (string, error) {
 	tmp, err := os.CreateTemp(dir, pattern)
