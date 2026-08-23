@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 
 	"github.com/SDK-E/dnser/internal/config"
@@ -16,12 +17,19 @@ type Options struct {
 }
 
 type Status struct {
-	Running      bool   `json:"running"`
-	Version      string `json:"version"`
-	TLD          string `json:"tld"`
-	DNSPort      int    `json:"dns_port"`
-	DashboardURL string `json:"dashboard_url"`
-	Projects     int    `json:"projects"`
+	Running      bool         `json:"running"`
+	Version      string       `json:"version"`
+	TLD          string       `json:"tld"`
+	DNSPort      int          `json:"dns_port"`
+	DashboardURL string       `json:"dashboard_url"`
+	Projects     int          `json:"projects"`
+	Apps         []AppSummary `json:"apps,omitempty"`
+}
+
+type AppSummary struct {
+	Domain string `json:"domain"`
+	State  string `json:"state"`
+	Port   int    `json:"port"`
 }
 
 type Service struct {
@@ -136,6 +144,12 @@ func (s *Service) Status() Status {
 	if rt := s.Runtime(); rt != nil {
 		st.DNSPort = rt.DNSPort()
 		st.DashboardURL = rt.DashboardURL()
+		if sup := rt.Runner(); sup != nil {
+			for domain, info := range sup.Info() {
+				st.Apps = append(st.Apps, AppSummary{Domain: domain, State: string(info.State), Port: info.Port})
+			}
+		}
+		sort.Slice(st.Apps, func(i, j int) bool { return st.Apps[i].Domain < st.Apps[j].Domain })
 	}
 	return st
 }
