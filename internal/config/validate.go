@@ -147,6 +147,9 @@ func Validate(cfg Config) error {
 			}
 		}
 		if p.Run != nil {
+			if p.Run.Port < 0 || p.Run.Port > 65535 {
+				return fmt.Errorf("projects[%d] (%s).run.port: %d out of range", i, domain, p.Run.Port)
+			}
 			switch p.Run.Mode {
 			case "", "dev":
 			default:

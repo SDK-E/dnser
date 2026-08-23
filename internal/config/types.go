@@ -49,6 +49,7 @@ type Route struct {
 type RunConfig struct {
 	Command string `json:"command,omitempty"`
 	Mode    string `json:"mode,omitempty"`
+	Port    int    `json:"port,omitempty"`
 }
 
 type Project struct {

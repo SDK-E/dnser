@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/SDK-E/dnser/internal/config"
+	"github.com/SDK-E/dnser/internal/runner"
 )
 
 func testStore(t *testing.T) *config.Store {
@@ -198,4 +200,109 @@ func TestRuntimeUIPortFallsBackWhenOccupied(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d", resp.StatusCode)
 	}
+}
+
+func TestRunnerSyncStartsManagedProject(t *testing.T) {
+	store := testStore(t)
+	binPath := filepath.Join(t.TempDir(), "apphelper")
+	build := exec.Command("go", "build", "-o", binPath, "./testdata/apphelper")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build apphelper: %v\n%s", err, out)
+	}
+
+	projectDir := t.TempDir()
+	if err := store.Update(func(c *config.Config) {
+		c.Projects = append(c.Projects, config.Project{
+			Domain: "app.wizard.test",
+			Path:   projectDir,
+			Run:    &config.RunConfig{Command: binPath},
+			Routes: []config.Route{
+				{Host: "@", Backends: []string{"127.0.0.1:35199"}, HTTPS: true},
+			},
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rt, err := New(Options{Store: store, Version: "test", SkipListeners: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rt.Shutdown(context.Background()) }()
+
+	deadline := time.Now().Add(15 * time.Second)
+	var info runner.AppInfo
+	for time.Now().Before(deadline) {
+		if got, ok := rt.Runner().Get("app.wizard.test"); ok && got.State == runner.StateUp {
+			info = got
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if info.State != runner.StateUp || info.Port == 0 {
+		got, _ := rt.Runner().Get("app.wizard.test")
+		t.Fatalf("app never came up: %+v depsMissing=%v", got, rt.DepsMissing())
+	}
+
+	snap := store.Get()
+	var runPort int
+	for _, p := range snap.Projects {
+		if p.Domain == "app.wizard.test" && p.Run != nil {
+			runPort = p.Run.Port
+		}
+	}
+	if runPort != info.Port {
+		t.Fatalf("persisted port %d != running port %d", runPort, info.Port)
+	}
+}
+
+func TestRunnerSyncRemovesUnmanagedProject(t *testing.T) {
+	store := testStore(t)
+	projectDir := t.TempDir()
+	if err := store.Update(func(c *config.Config) {
+		c.Projects = append(c.Projects, config.Project{
+			Domain: "gone.wizard.test",
+			Path:   projectDir,
+			Run:    &config.RunConfig{Command: "sleep 30"},
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rt, err := New(Options{Store: store, Version: "test", SkipListeners: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rt.Shutdown(context.Background()) }()
+
+	waitFor(t, func() bool {
+		_, ok := rt.Runner().Get("gone.wizard.test")
+		return ok
+	}, "project to start")
+
+	store.Update(func(c *config.Config) {
+		kept := c.Projects[:0]
+		for _, p := range c.Projects {
+			if p.Domain != "gone.wizard.test" {
+				kept = append(kept, p)
+			}
+		}
+		c.Projects = kept
+	})
+
+	waitFor(t, func() bool {
+		_, ok := rt.Runner().Get("gone.wizard.test")
+		return !ok
+	}, "project removal")
+}
+
+func waitFor(t *testing.T, cond func() bool, what string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
 }

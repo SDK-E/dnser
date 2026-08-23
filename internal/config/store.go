@@ -157,7 +157,7 @@ func (s *Store) Update(mutate func(*Config)) error {
 		}
 		next.Projects[i].Domain = domain
 		p := &next.Projects[i]
-		if p.Run != nil && p.Run.Command == "" && p.Run.Mode == "" {
+		if p.Run != nil && p.Run.Command == "" && p.Run.Mode == "" && p.Run.Port == 0 {
 			p.Run = nil
 		}
 		if p.Path != "" {

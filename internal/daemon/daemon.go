@@ -17,6 +17,7 @@ import (
 	"github.com/SDK-E/dnser/internal/health"
 	"github.com/SDK-E/dnser/internal/logstream"
 	"github.com/SDK-E/dnser/internal/proxyd"
+	"github.com/SDK-E/dnser/internal/runner"
 )
 
 type Runtime struct {
@@ -30,6 +31,9 @@ type Runtime struct {
 	proxy   *proxyd.Server
 	ui      *api.Server
 	checker *health.Checker
+	runner  *runner.Supervisor
+
+	depsMissing map[string]string
 
 	dnsPort   int
 	uiPort    int
@@ -59,10 +63,15 @@ func New(opts Options) (*Runtime, error) {
 	}
 
 	rt := &Runtime{
-		store:    opts.Store,
-		stream:   logstream.New(logstream.DefaultCapacity),
-		reloaded: make(chan struct{}, 1),
+		store:       opts.Store,
+		stream:      logstream.New(logstream.DefaultCapacity),
+		reloaded:    make(chan struct{}, 1),
+		depsMissing: map[string]string{},
 	}
+	rt.runner = runner.NewSupervisor(runner.Options{
+		LogsDir: filepath.Join(filepath.Dir(opts.Store.Path()), "logs"),
+		Stream:  rt.stream,
+	})
 
 	cfg := rt.store.Get()
 
@@ -104,6 +113,7 @@ func New(opts Options) (*Runtime, error) {
 	rt.uiPort = uiPort
 
 	rt.applyRoutes(cfg, uiPort)
+	rt.syncRunner(cfg)
 
 	if !opts.SkipListeners {
 		bind := cfg.Settings.Bind
@@ -209,6 +219,7 @@ func (rt *Runtime) Reload(cfg config.Config) error {
 		rt.dns.Cache().InvalidateAll()
 	}
 	rt.applyRoutes(cfg, rt.uiPort)
+	rt.syncRunner(cfg)
 	select {
 	case rt.reloaded <- struct{}{}:
 	default:
@@ -254,6 +265,9 @@ func (rt *Runtime) DashboardURL() string {
 func (rt *Runtime) Shutdown(ctx context.Context) error {
 	if rt.stopWatch != nil {
 		rt.stopWatch()
+	}
+	if rt.runner != nil {
+		rt.runner.Shutdown()
 	}
 	if rt.checker != nil {
 		rt.checker.Stop()
