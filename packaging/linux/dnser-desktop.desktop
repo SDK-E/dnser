@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DNSer
+Comment=Local DNS management for development
+Exec=/usr/bin/dnser-desktop
+Icon=dnser
+Terminal=false
+Categories=Development;Network;
+StartupWMClass=dnser-desktop

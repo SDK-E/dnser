@@ -1,0 +1,18 @@
+# Contributor: SDK Enterprises <hicham@sdk.enterprises>
+pkgname=dnser-bin
+pkgver={{VERSION}}
+pkgrel=1
+pkgdesc="Local DNS management for development (CLI)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/SDK-E/dnser"
+license=('BUSL1.1')
+provides=('dnser')
+conflicts=('dnser')
+source_x86_64=("{{URL_BASE}}/dnser_{{VERSION}}_Linux_amd64.tar.gz")
+source_aarch64=("{{URL_BASE}}/dnser_{{VERSION}}_Linux_arm64.tar.gz")
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+  install -Dm755 dnser "$pkgdir/usr/bin/dnser"
+}

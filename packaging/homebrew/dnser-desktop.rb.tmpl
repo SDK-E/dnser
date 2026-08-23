@@ -1,0 +1,21 @@
+cask "dnser-desktop" do
+  version "{{VERSION}}"
+  sha256 arm:   "{{SHA_DMG_ARM}}",
+         intel: "{{SHA_DMG_INTEL}}"
+
+  on_arm do
+    url "{{URL_BASE}}/DNSer_{{VERSION}}_macOS_arm64.dmg"
+  end
+  on_intel do
+    url "{{URL_BASE}}/DNSer_{{VERSION}}_macOS_amd64.dmg"
+  end
+
+  name "DNSer"
+  desc "Local DNS management for development"
+  homepage "https://github.com/SDK-E/dnser"
+
+  auto_updates false
+  depends_on macos: ">= :big_sur"
+
+  app "DNSer.app"
+end

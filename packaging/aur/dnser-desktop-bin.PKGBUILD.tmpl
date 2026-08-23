@@ -1,0 +1,23 @@
+# Contributor: SDK Enterprises <hicham@sdk.enterprises>
+pkgname=dnser-desktop-bin
+pkgver={{VERSION}}
+pkgrel=1
+pkgdesc="Local DNS management for development (GUI)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/SDK-E/dnser"
+license=('BUSL1.1')
+depends=('gtk3' 'webkit2gtk-4.1')
+provides=('dnser-desktop')
+conflicts=('dnser-desktop')
+source_x86_64=("{{URL_BASE}}/DNSer_{{VERSION}}_linux_amd64.AppImage")
+source_aarch64=("{{URL_BASE}}/DNSer_{{VERSION}}_linux_arm64.AppImage")
+sha256sums_x86_64=('{{SHA_AMD64}}')
+sha256sums_aarch64=('{{SHA_ARM64}}')
+
+package() {
+  case "$CARCH" in
+    x86_64) local img="DNSer_${pkgver}_linux_amd64.AppImage" ;;
+    aarch64) local img="DNSer_${pkgver}_linux_arm64.AppImage" ;;
+  esac
+  install -Dm755 "$srcdir/$img" "$pkgdir/usr/bin/dnser-desktop"
+}
