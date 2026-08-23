@@ -279,7 +279,7 @@ func TestRunnerSyncRemovesUnmanagedProject(t *testing.T) {
 		return ok
 	}, "project to start")
 
-	store.Update(func(c *config.Config) {
+	if err := store.Update(func(c *config.Config) {
 		kept := c.Projects[:0]
 		for _, p := range c.Projects {
 			if p.Domain != "gone.wizard.test" {
@@ -287,7 +287,9 @@ func TestRunnerSyncRemovesUnmanagedProject(t *testing.T) {
 			}
 		}
 		c.Projects = kept
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	waitFor(t, func() bool {
 		_, ok := rt.Runner().Get("gone.wizard.test")
