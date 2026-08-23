@@ -4,10 +4,10 @@ cask "dnser-desktop" do
          intel: "{{SHA_DMG_INTEL}}"
 
   on_arm do
-    url "{{URL_BASE}}/DNSer_{{VERSION}}_macOS_arm64.dmg"
+    url "{{URL_BASE}}/DNSer_#{version}_macOS_arm64.dmg"
   end
   on_intel do
-    url "{{URL_BASE}}/DNSer_{{VERSION}}_macOS_amd64.dmg"
+    url "{{URL_BASE}}/DNSer_#{version}_macOS_amd64.dmg"
   end
 
   name "DNSer"
@@ -15,7 +15,7 @@ cask "dnser-desktop" do
   homepage "https://github.com/SDK-E/dnser"
 
   auto_updates false
-  depends_on macos: ">= :big_sur"
+  depends_on macos: :big_sur
 
   app "DNSer.app"
 end
