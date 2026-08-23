@@ -103,8 +103,8 @@ jobs:
       - name: Build UI
         run: pnpm --dir web install --frozen-lockfile && pnpm --dir web build
       - name: Desktop unit tests
-        run: go test -tags desktop ./internal/desktop/ -count=1 -race
+        run: go test -tags "desktop,gtk3" ./internal/desktop/ ./internal/setup/ -count=1 -race
       - name: Desktop build
-        run: go build -tags desktop ./cmd/dnser-desktop
+        run: go build -tags "desktop,gtk3" ./cmd/dnser-desktop
       - name: Vet desktop sources
-        run: go vet -tags desktop ./internal/desktop/ ./cmd/dnser-desktop
+        run: go vet -tags "desktop,gtk3" ./internal/desktop/ ./internal/setup/ ./cmd/dnser-desktop
