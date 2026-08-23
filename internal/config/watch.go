@@ -64,7 +64,6 @@ func (s *Store) Watch(onChange func(Config)) (func(), error) {
 	}()
 
 	go func() {
-		defer close(kick)
 		ticker := time.NewTicker(150 * time.Millisecond)
 		defer ticker.Stop()
 		fallback := time.NewTicker(750 * time.Millisecond)
