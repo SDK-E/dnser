@@ -128,11 +128,16 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 		"mkdir -p %q && cp %q %q && security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain %q",
 		filepath.Dir(targetPath), tmpPath, targetPath, targetPath,
 	)
-	if _, sudoErr := r.CombinedOutput("sudo", "-n", "true"); sudoErr == nil {
+	if _, sudoErr := runWithTimeout(r, "sudo", "-n", "true"); sudoErr == nil {
 		if _, serr := runWithTimeout(r, "sudo", "-n", "/bin/sh", "-c", adminScript); serr == nil {
 			_ = os.Remove(tmpPath)
 			return targetPath, TrustModeAdmin, nil
 		}
+	}
+
+	if os.Getenv("CI") != "" {
+		_ = os.Remove(tmpPath)
+		return "", "", fmt.Errorf("trust CA failed: interactive elevation unavailable in CI")
 	}
 
 	out, aerr := r.CombinedOutput("osascript", "-e",
@@ -171,7 +176,7 @@ func UntrustCA(r Runner, installPath, mode string) error {
 		"security remove-trusted-cert -d %q 2>/dev/null; security delete-certificate -c %q /Library/Keychains/System.keychain 2>/dev/null; rm -f %q; true",
 		installPath, caCommonName, installPath,
 	)
-	if _, sudoErr := r.CombinedOutput("sudo", "-n", "true"); sudoErr == nil {
+	if _, sudoErr := runWithTimeout(r, "sudo", "-n", "true"); sudoErr == nil {
 		if _, serr := runWithTimeout(r, "sudo", "-n", "/bin/sh", "-c", script); serr == nil {
 			return nil
 		}

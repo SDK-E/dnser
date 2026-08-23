@@ -1,7 +1,7 @@
 package setup
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -92,22 +92,15 @@ const trustCommandTimeout = 20 * time.Second
 
 func runWithTimeout(r Runner, name string, args ...string) ([]byte, error) {
 	if _, ok := r.(execRunner); ok {
-		cmd := exec.Command(name, args...)
-		var buf bytes.Buffer
-		cmd.Stdout = &buf
-		cmd.Stderr = &buf
-		if err := cmd.Start(); err != nil {
-			return nil, err
+		ctx, cancel := context.WithTimeout(context.Background(), trustCommandTimeout)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, name, args...)
+		cmd.WaitDelay = 2 * time.Second
+		out, err := cmd.CombinedOutput()
+		if ctx.Err() != nil {
+			return out, fmt.Errorf("%s timed out after %s (locked keychain or missing GUI session)", name, trustCommandTimeout)
 		}
-		done := make(chan error, 1)
-		go func() { done <- cmd.Wait() }()
-		select {
-		case err := <-done:
-			return buf.Bytes(), err
-		case <-time.After(trustCommandTimeout):
-			_ = cmd.Process.Kill()
-			return buf.Bytes(), fmt.Errorf("%s timed out after %s (locked keychain or missing GUI session)", name, trustCommandTimeout)
-		}
+		return out, err
 	}
 	return r.CombinedOutput(name, args...)
 }
