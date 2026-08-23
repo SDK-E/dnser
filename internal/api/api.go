@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/SDK-E/dnser/internal/config"
@@ -102,45 +101,59 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 type projectView struct {
 	config.Project
-	Health *healthView `json:"health,omitempty"`
+	BackendHealth []backendHealthView `json:"backend_health,omitempty"`
 }
 
-type healthView struct {
+func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
+	projects := s.rt.Store().Projects()
+	checker := s.rt.Checker()
+	snap := map[string]health.Status{}
+	if checker != nil {
+		snap = checker.Snapshot()
+	}
+	out := make([]projectView, 0, len(projects))
+	for _, p := range projects {
+		view := projectView{Project: p, BackendHealth: backendHealth(p, snap)}
+		out = append(out, view)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"projects": out})
+}
+
+func backendHealth(p config.Project, snap map[string]health.Status) []backendHealthView {
+	var out []backendHealthView
+	for _, route := range p.Routes {
+		for _, b := range route.Backends {
+			st, ok := snap[b]
+			if !ok {
+				continue
+			}
+			out = append(out, backendHealthView{
+				Backend: b, Host: route.Hostname(p.Domain, ""), TCP: route.TCP,
+				Up: st.Up, LatencyMS: st.LatencyMS, CheckedAt: st.CheckedAt, FailCount: st.FailCount,
+			})
+		}
+	}
+	return out
+}
+
+type backendHealthView struct {
+	Backend   string    `json:"backend"`
+	Host      string    `json:"host"`
+	TCP       bool      `json:"tcp"`
 	Up        bool      `json:"up"`
 	LatencyMS int64     `json:"latency_ms"`
 	CheckedAt time.Time `json:"checked_at"`
 	FailCount int       `json:"fail_count"`
 }
 
-func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
-	projects := s.rt.Store().Projects()
-	checker := s.rt.Checker()
-	out := make([]projectView, 0, len(projects))
-	for _, p := range projects {
-		view := projectView{Project: p}
-		if checker != nil {
-			for host := range checker.Snapshot() {
-				base := strings.TrimPrefix(host, "*.")
-				if base == p.Domain {
-					if st, ok := checker.Get(host); ok {
-						view.Health = &healthView{Up: st.Up, LatencyMS: st.LatencyMS, CheckedAt: st.CheckedAt, FailCount: st.FailCount}
-					}
-					break
-				}
-			}
-		}
-		out = append(out, view)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"projects": out})
-}
-
 type createProjectReq struct {
-	Domain     string   `json:"domain"`
-	Port       int      `json:"port"`
-	Wildcard   bool     `json:"wildcard"`
-	HTTPS      bool     `json:"https"`
-	ForceHTTPS bool     `json:"force_https,omitempty"`
-	Aliases    []string `json:"aliases,omitempty"`
+	Domain     string         `json:"domain"`
+	Path       string         `json:"path,omitempty"`
+	Routes     []config.Route `json:"routes,omitempty"`
+	Port       int            `json:"port,omitempty"`
+	Wildcard   bool           `json:"wildcard,omitempty"`
+	HTTPS      bool           `json:"https,omitempty"`
+	ForceHTTPS bool           `json:"force_https,omitempty"`
 }
 
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
@@ -155,24 +168,26 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	routes := req.Routes
+	if len(routes) == 0 && req.Port > 0 {
+		routes = legacyRoutes(req.Port, req.Wildcard, req.HTTPS, req.ForceHTTPS)
+	}
 	err = store.Update(func(c *config.Config) {
 		for i := range c.Projects {
 			if c.Projects[i].Domain == domain {
-				c.Projects[i].Port = req.Port
-				c.Projects[i].Wildcard = req.Wildcard || c.Projects[i].Wildcard
-				c.Projects[i].HTTPS = req.HTTPS || c.Projects[i].HTTPS
-				c.Projects[i].ForceHTTPS = req.ForceHTTPS
-				c.Projects[i].Aliases = mergeAliases(c.Projects[i].Aliases, req.Aliases)
+				if len(routes) > 0 {
+					c.Projects[i].Routes = routes
+				}
+				if req.Path != "" {
+					c.Projects[i].Path = req.Path
+				}
 				return
 			}
 		}
 		c.Projects = append(c.Projects, config.Project{
-			Domain:     domain,
-			Port:       req.Port,
-			Wildcard:   req.Wildcard,
-			HTTPS:      req.HTTPS,
-			ForceHTTPS: req.ForceHTTPS,
-			Aliases:    req.Aliases,
+			Domain: domain,
+			Path:   req.Path,
+			Routes: routes,
 		})
 	})
 	if err != nil {
@@ -184,10 +199,11 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateProjectReq struct {
-	Port     *int     `json:"port,omitempty"`
-	Wildcard *bool    `json:"wildcard,omitempty"`
-	HTTPS    *bool    `json:"https,omitempty"`
-	Aliases  []string `json:"aliases,omitempty"`
+	Routes   *[]config.Route `json:"routes,omitempty"`
+	Path     *string         `json:"path,omitempty"`
+	Port     *int            `json:"port,omitempty"`
+	Wildcard *bool           `json:"wildcard,omitempty"`
+	HTTPS    *bool           `json:"https,omitempty"`
 }
 
 func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
@@ -208,17 +224,14 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			updated = true
-			if req.Port != nil {
-				c.Projects[i].Port = *req.Port
+			if req.Routes != nil {
+				c.Projects[i].Routes = *req.Routes
 			}
-			if req.Wildcard != nil {
-				c.Projects[i].Wildcard = *req.Wildcard
+			if req.Path != nil {
+				c.Projects[i].Path = *req.Path
 			}
-			if req.HTTPS != nil {
-				c.Projects[i].HTTPS = *req.HTTPS
-			}
-			if req.Aliases != nil {
-				c.Projects[i].Aliases = req.Aliases
+			if req.Port != nil && *req.Port > 0 {
+				patchLegacyPort(&c.Projects[i], *req.Port, req.Wildcard, req.HTTPS)
 			}
 		}
 	})
@@ -421,20 +434,51 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	return true
 }
 
-func mergeAliases(existing, add []string) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, len(existing)+len(add))
-	for _, s := range existing {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
+func legacyRoutes(port int, wildcard, https, forceHTTPS bool) []config.Route {
+	routes := []config.Route{{
+		Host:       "@",
+		Backends:   []string{fmt.Sprintf("localhost:%d", port)},
+		HTTPS:      https,
+		ForceHTTPS: forceHTTPS,
+	}}
+	if wildcard {
+		routes = append(routes, config.Route{
+			Host:       "*",
+			Backends:   []string{fmt.Sprintf("localhost:%d", port)},
+			HTTPS:      https,
+			ForceHTTPS: forceHTTPS,
+		})
+	}
+	return routes
+}
+
+func patchLegacyPort(p *config.Project, port int, wildcard, https *bool) {
+	backend := fmt.Sprintf("localhost:%d", port)
+	for j := range p.Routes {
+		if p.Routes[j].Host == "@" && len(p.Routes[j].Backends) > 0 {
+			p.Routes[j].Backends[0] = backend
+		}
+		if p.Routes[j].Host == "*" {
+			if len(p.Routes[j].Backends) > 0 {
+				p.Routes[j].Backends[0] = backend
+			}
+			if https != nil {
+				p.Routes[j].HTTPS = *https
+			}
+		}
+		if p.Routes[j].Host == "@" && https != nil {
+			p.Routes[j].HTTPS = *https
 		}
 	}
-	for _, s := range add {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
+	if wildcard != nil && *wildcard {
+		hasWildcard := false
+		for _, r := range p.Routes {
+			if r.Host == "*" {
+				hasWildcard = true
+			}
+		}
+		if !hasWildcard {
+			p.Routes = append(p.Routes, config.Route{Host: "*", Backends: []string{backend}})
 		}
 	}
-	return out
 }

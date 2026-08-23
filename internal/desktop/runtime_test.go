@@ -39,10 +39,11 @@ func testService(t *testing.T) *Service {
 	if err := store.Update(func(c *config.Config) {
 		c.Settings.Ports = ports
 		c.Projects = []config.Project{{
-			Domain:   "desktop.test",
-			Port:     35100,
-			Wildcard: true,
-			HTTPS:    true,
+			Domain: "desktop.test",
+			Routes: []config.Route{
+				{Host: "@", Backends: []string{"localhost:35100"}, HTTPS: true},
+				{Host: "*", Backends: []string{"localhost:35100"}, HTTPS: true},
+			},
 		}}
 	}); err != nil {
 		t.Fatal(err)

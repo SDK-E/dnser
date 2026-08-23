@@ -47,21 +47,20 @@ func newStatusCmd() *cobra.Command {
 			}
 			fmt.Fprintln(out)
 			for _, p := range projects {
-				flags := []string{}
-				if p.Wildcard {
-					flags = append(flags, "*")
-				}
-				if p.HTTPS {
-					flags = append(flags, "https")
-				}
-				port := "-"
-				if p.Port > 0 {
-					port = fmt.Sprintf("%d", p.Port)
-				}
-				fmt.Fprintf(out, "%-40s -> localhost:%-6s %s\n", p.Domain, port, strings.Join(flags, ","))
+				fmt.Fprintf(out, "%-40s %s\n", p.Domain, describeRoutes(p))
 				if verbose {
-					for _, a := range p.Aliases {
-						fmt.Fprintf(out, "  alias %s\n", a)
+					for _, route := range p.Routes {
+						kind := "http"
+						if route.TCP {
+							kind = fmt.Sprintf("tcp:%d", route.Listen)
+						}
+						extra := ""
+						if route.ForceHTTPS {
+							extra = " force-https"
+						} else if route.HTTPS {
+							extra = " https"
+						}
+						fmt.Fprintf(out, "  %-24s %-8s -> %s%s\n", route.Hostname(p.Domain, ""), kind, strings.Join(route.Backends, ", "), extra)
 					}
 					for _, r := range p.Records {
 						fmt.Fprintf(out, "  %-5s %-16s %s\n", r.Type, r.Name, r.Value)
@@ -71,6 +70,26 @@ func newStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "show aliases and records")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "show routes and records")
 	return cmd
+}
+
+func describeRoutes(p config.Project) string {
+	parts := []string{}
+	for _, route := range p.Routes {
+		kind := ""
+		if route.TCP {
+			kind = fmt.Sprintf("tcp:%d ", route.Listen)
+		} else if route.ForceHTTPS {
+			kind = "https "
+		} else if route.HTTPS {
+			kind = "tls "
+		}
+		host := route.Hostname(p.Domain, "")
+		if route.Host == "@" {
+			host = p.Domain
+		}
+		parts = append(parts, fmt.Sprintf("%s%s → %s", kind, host, strings.Join(route.Backends, ",")))
+	}
+	return strings.Join(parts, "\n                 ")
 }

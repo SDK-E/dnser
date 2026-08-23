@@ -15,11 +15,12 @@ import (
 
 func e2eProject() config.Project {
 	return config.Project{
-		Domain:   "myproject.test",
-		Port:     32000,
-		Wildcard: true,
-		HTTPS:    true,
-		Aliases:  []string{"myproject.dev.test"},
+		Domain: "myproject.test",
+		Routes: []config.Route{
+			{Host: "@", Backends: []string{"localhost:32000"}, HTTPS: true},
+			{Host: "*", Backends: []string{"localhost:32000"}, HTTPS: true},
+			{Host: "myproject.dev.test", Backends: []string{"localhost:32000"}, HTTPS: true},
+		},
 		Records: []config.Record{
 			{Type: "TXT", Name: "_verify", Value: "token-abc"},
 			{Type: "A", Name: "static", Value: "10.10.0.5"},
@@ -139,7 +140,7 @@ func TestE2E_HotReload(t *testing.T) {
 		t.Fatal("should not resolve before link")
 	}
 
-	appendProjectFile(t, d, config.Project{Domain: "second.test", Port: 32100, Wildcard: true, HTTPS: true})
+	appendProjectFile(t, d, config.Project{Domain: "second.test", Routes: []config.Route{{Host: "@", Backends: []string{"localhost:32100"}, HTTPS: true}, {Host: "*", Backends: []string{"localhost:32100"}, HTTPS: true}}})
 
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {

@@ -64,10 +64,16 @@ func runWizard(cmd *cobra.Command) error {
 		fmt.Fprintln(out, "\n  Linked projects:")
 		for _, p := range projects {
 			extra := ""
-			if p.Wildcard {
-				extra = "  (*)"
+			backend := "-"
+			for _, route := range p.Routes {
+				if route.Host == "*" {
+					extra = "  (*)"
+				}
+				if route.Host == "@" && len(route.Backends) > 0 {
+					backend = strings.TrimPrefix(route.Backends[0], "localhost:")
+				}
 			}
-			fmt.Fprintf(out, "    %-38s → :%d%s\n", p.Domain, p.Port, extra)
+			fmt.Fprintf(out, "    %-38s → :%s%s\n", p.Domain, backend, extra)
 		}
 	}
 

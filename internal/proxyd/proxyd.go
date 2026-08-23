@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/SDK-E/dnser/internal/certs"
@@ -18,29 +19,55 @@ import (
 
 type Route struct {
 	Host       string
-	Target     string
+	Backends   []string
 	HTTPS      bool
 	ForceHTTPS bool
-	Port       int
+	TCP        bool
+	Listen     int
 }
 
 type Router struct {
 	mu     sync.RWMutex
 	routes map[string]Route
+	rr     map[string]*atomic.Uint64
 }
 
 func NewRouter() *Router {
-	return &Router{routes: make(map[string]Route)}
+	return &Router{routes: make(map[string]Route), rr: make(map[string]*atomic.Uint64)}
 }
 
 func (r *Router) Replace(routes []Route) {
 	table := make(map[string]Route, len(routes))
+	counters := make(map[string]*atomic.Uint64, len(routes))
 	for _, rt := range routes {
-		table[strings.ToLower(rt.Host)] = rt
+		key := strings.ToLower(rt.Host)
+		table[key] = rt
+		counters[key] = new(atomic.Uint64)
+		if old, ok := r.rr[key]; ok {
+			counters[key] = old
+		}
 	}
 	r.mu.Lock()
 	r.routes = table
+	r.rr = counters
 	r.mu.Unlock()
+}
+
+func (r *Router) Pick(host string, backends []string) (string, bool) {
+	n := len(backends)
+	if n == 0 {
+		return "", false
+	}
+	if n == 1 {
+		return backends[0], true
+	}
+	r.mu.RLock()
+	counter := r.rr[strings.ToLower(host)]
+	r.mu.RUnlock()
+	if counter == nil {
+		return backends[0], true
+	}
+	return backends[int(counter.Add(1))%n], true
 }
 
 func (r *Router) Lookup(host string) (Route, bool) {
@@ -63,14 +90,24 @@ func (r *Router) Lookup(host string) (Route, bool) {
 	return Route{}, false
 }
 
-func (r *Router) Targets() map[string]string {
+func (r *Router) Backends() map[string]string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make(map[string]string, len(r.routes))
-	for host, rt := range r.routes {
-		if rt.Port > 0 {
-			out[host] = fmt.Sprintf("http://%s", rt.Target)
+	for _, rt := range r.routes {
+		for _, b := range rt.Backends {
+			out[b] = "http://" + b
 		}
+	}
+	return out
+}
+
+func (r *Router) Routes() []Route {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]Route, 0, len(r.routes))
+	for _, rt := range r.routes {
+		out = append(out, rt)
 	}
 	return out
 }
@@ -134,20 +171,30 @@ func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) proxy(w http.ResponseWriter, r *http.Request, rt Route) {
-	target := &url.URL{Scheme: "http", Host: rt.Target}
-	proxy := &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(target)
-			pr.Out.Host = pr.In.Host
-			pr.SetXForwarded()
-		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			slog.Debug("upstream unavailable", "host", rt.Host, "target", rt.Target, "err", err)
-			writeUpstreamDown(w, r, rt)
-		},
-		FlushInterval: 100 * time.Millisecond,
+	tried := map[string]bool{}
+	for range rt.Backends {
+		backend, ok := s.router.Pick(rt.Host, rt.Backends)
+		if !ok || tried[backend] {
+			continue
+		}
+		tried[backend] = true
+		target := &url.URL{Scheme: "http", Host: backend}
+		proxy := &httputil.ReverseProxy{
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(target)
+				pr.Out.Host = pr.In.Host
+				pr.SetXForwarded()
+			},
+			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+				slog.Debug("upstream unavailable", "host", rt.Host, "backend", backend, "err", err)
+				writeUpstreamDown(w, r, rt)
+			},
+			FlushInterval: 100 * time.Millisecond,
+		}
+		proxy.ServeHTTP(w, r)
+		return
 	}
-	proxy.ServeHTTP(w, r)
+	writeUpstreamDown(w, r, rt)
 }
 
 func (s *Server) Serve(bindHTTP, bindHTTPS string) error {

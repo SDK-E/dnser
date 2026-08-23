@@ -27,7 +27,10 @@ func TestE2E_ProxyHTTPAndHTTPS(t *testing.T) {
 	upstream := startEchoUpstream(t, "e2e-ok")
 	target := upstream
 	p := e2eProject()
-	p.Port = portOf(target)
+	backend := fmt.Sprintf("localhost:%d", portOf(target))
+	for i := range p.Routes {
+		p.Routes[i].Backends = []string{backend}
+	}
 
 	d := startDaemon(t, p)
 	client := tlsClient(t, d)
@@ -92,7 +95,7 @@ func TestE2E_ProxyHTTPAndHTTPS(t *testing.T) {
 	})
 
 	t.Run("linked host with dead upstream returns branded 502 over TLS", func(t *testing.T) {
-		appendProjectFile(t, d, config.Project{Domain: "dead.test", Port: 32999, HTTPS: true})
+		appendProjectFile(t, d, config.Project{Domain: "dead.test", Routes: []config.Route{{Host: "@", Backends: []string{"localhost:32999"}, HTTPS: true}}})
 
 		var resp *http.Response
 		var err error

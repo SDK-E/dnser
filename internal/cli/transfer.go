@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -78,7 +77,21 @@ func renderBIND(cfg config.Config) string {
 	for _, p := range cfg.Projects {
 		b.WriteString("\n")
 		fmt.Fprintf(&b, "$ORIGIN %s\n", dns.Fqdn(p.Domain))
-		fmt.Fprintf(&b, "; dnser: port=%d wildcard=%t https=%t\n", p.Port, p.Wildcard, p.HTTPS)
+		apexBackend, wildcardRoute := "", false
+		https := false
+		for _, route := range p.Routes {
+			if route.TCP || len(route.Backends) == 0 {
+				continue
+			}
+			switch route.Host {
+			case "@":
+				apexBackend = route.Backends[0]
+				https = route.HTTPS
+			case "*":
+				wildcardRoute = true
+			}
+		}
+		fmt.Fprintf(&b, "; dnser: backend=%s wildcard=%t https=%t\n", apexBackend, wildcardRoute, https)
 
 		hasApexA, hasWildA := false, false
 		for _, r := range p.Records {
@@ -91,7 +104,7 @@ func renderBIND(cfg config.Config) string {
 		}
 		if !hasApexA && !hasWildA && cfg.Settings.Bind != "" {
 			fmt.Fprintf(&b, "@ %d IN A %s\n", configDefaultTTL(), cfg.Settings.Bind)
-			if p.Wildcard {
+			if wildcardRoute {
 				fmt.Fprintf(&b, "* %d IN A %s\n", configDefaultTTL(), cfg.Settings.Bind)
 			}
 		}
@@ -132,7 +145,7 @@ func configDefaultTTL() uint32 { return 120 }
 var dnserDirectiveRe = regexp.MustCompile(`;\s*dnser:\s*(.*)`)
 
 type bindMeta struct {
-	port     int
+	backend  string
 	wildcard bool
 	https    bool
 }
@@ -155,8 +168,8 @@ func parseDirectives(content string) map[string]bindMeta {
 					continue
 				}
 				switch parts[0] {
-				case "port":
-					meta.port, _ = strconv.Atoi(parts[1])
+				case "backend":
+					meta.backend = strings.Trim(parts[1], `"`)
 				case "wildcard":
 					meta.wildcard = parts[1] == "true"
 				case "https":
@@ -245,11 +258,13 @@ func importBIND(store *config.Store, content string) (int, error) {
 		project := zones[zoneDomain]
 		if project == nil {
 			meta := parseDirectives(content)[zoneDomain]
-			project = &config.Project{
-				Domain:   zoneDomain,
-				Port:     meta.port,
-				Wildcard: meta.wildcard,
-				HTTPS:    meta.https,
+			project = &config.Project{Domain: zoneDomain}
+			if meta.backend != "" {
+				routes := []config.Route{{Host: "@", Backends: []string{meta.backend}, HTTPS: meta.https}}
+				if meta.wildcard {
+					routes = append(routes, config.Route{Host: "*", Backends: []string{meta.backend}, HTTPS: meta.https})
+				}
+				project.Routes = routes
 			}
 			zones[zoneDomain] = project
 			order = append(order, zoneDomain)

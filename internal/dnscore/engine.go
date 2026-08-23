@@ -11,8 +11,8 @@ import (
 
 type zone struct {
 	name     string
-	project  config.Project
 	wildcard bool
+	labels   map[string]bool
 	records  map[string][]config.Record
 }
 
@@ -34,22 +34,36 @@ func NewEngine(cfg config.Config) *Engine {
 		bindIP: cfg.Settings.Bind,
 		zones:  make(map[string]*zone),
 	}
+	addZone := func(name string, z *zone) {
+		if _, exists := e.zones[name]; !exists {
+			e.zones[name] = z
+		}
+	}
+	tld := cfg.Settings.TLD
 	for _, p := range cfg.Projects {
 		z := &zone{
-			name:     p.Domain,
-			project:  p,
-			wildcard: p.Wildcard,
-			records:  make(map[string][]config.Record),
+			name:    p.Domain,
+			labels:  make(map[string]bool),
+			records: make(map[string][]config.Record),
 		}
 		for _, r := range p.Records {
 			z.records[r.Name] = append(z.records[r.Name], r)
 		}
-		e.zones[p.Domain] = z
-		for _, a := range p.Aliases {
-			if _, exists := e.zones[a]; !exists {
-				e.zones[a] = z
+		for _, route := range p.Routes {
+			switch {
+			case route.Host == "*" || route.Host == "*."+p.Domain:
+				z.wildcard = true
+			case route.Host == "@" || route.Host == "":
+			case !strings.Contains(route.Host, "."):
+				z.labels[route.Host] = true
+			default:
+				host := config.ResolveHost(route.Host, p.Domain, tld)
+				if host != p.Domain && !strings.HasPrefix(host, "*.") {
+					addZone(host, &zone{name: host, labels: map[string]bool{}, records: map[string][]config.Record{}})
+				}
 			}
 		}
+		addZone(p.Domain, z)
 	}
 	dash := config.DashboardDomain(cfg.Settings.TLD)
 	e.zones[dash] = &zone{name: dash}
@@ -79,7 +93,7 @@ func (e *Engine) match(name string) *Match {
 		if recs := z.records[rel]; len(recs) > 0 {
 			return &Match{Zone: z, Name: name, Rel: rel, Record: recs}
 		}
-		if z.wildcard {
+		if z.wildcard || z.labels[rel] {
 			return &Match{Zone: z, Name: name, Rel: rel}
 		}
 		return nil

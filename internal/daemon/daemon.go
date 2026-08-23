@@ -129,7 +129,7 @@ func New(opts Options) (*Runtime, error) {
 			return nil, fmt.Errorf("start proxy: %w", err)
 		}
 
-		rt.checker = health.NewChecker(rt.router.Targets, 5*time.Second)
+		rt.checker = health.NewChecker(rt.router.Backends, 5*time.Second)
 		rt.checker.Start()
 	}
 
@@ -166,28 +166,23 @@ func pickDNSPort(bind string, preferred int, fallbacks []int) (int, string, erro
 
 func (rt *Runtime) applyRoutes(cfg config.Config, uiPort int) {
 	var routes []proxyd.Route
+	tld := cfg.Settings.TLD
 	for _, p := range cfg.Projects {
-		if p.Port <= 0 {
-			continue
-		}
-		target := fmt.Sprintf("%s:%d", cfg.Settings.Bind, p.Port)
-		routes = append(routes, proxyd.Route{
-			Host: p.Domain, Target: target, HTTPS: p.HTTPS, ForceHTTPS: p.ForceHTTPS, Port: p.Port,
-		})
-		if p.Wildcard {
+		for _, route := range p.Routes {
+			if route.TCP || len(route.Backends) == 0 {
+				continue
+			}
 			routes = append(routes, proxyd.Route{
-				Host: "*." + p.Domain, Target: target, HTTPS: p.HTTPS, ForceHTTPS: p.ForceHTTPS, Port: p.Port,
-			})
-		}
-		for _, a := range p.Aliases {
-			routes = append(routes, proxyd.Route{
-				Host: a, Target: target, HTTPS: p.HTTPS, ForceHTTPS: p.ForceHTTPS, Port: p.Port,
+				Host:       route.Hostname(p.Domain, tld),
+				Backends:   route.Backends,
+				HTTPS:      route.HTTPS,
+				ForceHTTPS: route.ForceHTTPS,
 			})
 		}
 	}
 	dashTarget := fmt.Sprintf("%s:%d", cfg.Settings.Bind, uiPort)
 	routes = append(routes,
-		proxyd.Route{Host: config.DashboardDomain(cfg.Settings.TLD), Target: dashTarget, HTTPS: true, Port: uiPort},
+		proxyd.Route{Host: config.DashboardDomain(cfg.Settings.TLD), Backends: []string{dashTarget}, HTTPS: true},
 	)
 	rt.router.Replace(routes)
 }

@@ -75,7 +75,7 @@ func TestE2E_CLIWorkflow(t *testing.T) {
 		t.Fatal("export failed")
 	}
 	zoneData, err := os.ReadFile(zoneFile)
-	if err != nil || !strings.Contains(string(zoneData), "$ORIGIN demo.test.") || !strings.Contains(string(zoneData), "; dnser: port=5199") {
+	if err != nil || !strings.Contains(string(zoneData), "$ORIGIN demo.test.") || !strings.Contains(string(zoneData), "; dnser: backend=localhost:5199") {
 		t.Fatalf("zone export wrong: %v\n%s", err, zoneData)
 	}
 
@@ -105,8 +105,14 @@ func TestE2E_CLIWorkflow(t *testing.T) {
 			hasWildA = true
 		}
 	}
+	wildRoute := false
+	for _, route := range p.Routes {
+		if route.Host == "*" && len(route.Backends) > 0 && route.Backends[0] == "localhost:5199" {
+			wildRoute = true
+		}
+	}
 	if len(cfg.Projects) != 1 || p.Domain != "demo.test" ||
-		p.Port != 5199 || !p.Wildcard || !hasTXT || !hasWildA {
+		len(p.Routes) == 0 || !wildRoute || !hasTXT || !hasWildA {
 		t.Fatalf("round-trip state: %+v records=%+v", p, p.Records)
 	}
 

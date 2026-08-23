@@ -31,10 +31,11 @@ func testStore(t *testing.T) *config.Store {
 		c.Settings.Ports.HTTPS = 35002
 		c.Settings.Ports.UI = 35003
 		c.Projects = []config.Project{{
-			Domain:   "wizard.test",
-			Port:     35100,
-			Wildcard: true,
-			HTTPS:    true,
+			Domain: "wizard.test",
+			Routes: []config.Route{
+				{Host: "@", Backends: []string{"localhost:35100"}, HTTPS: true},
+				{Host: "*", Backends: []string{"localhost:35100"}, HTTPS: true},
+			},
 		}}
 	}); err != nil {
 		t.Fatal(err)
@@ -63,7 +64,10 @@ func TestRuntimeServesDNSAndProxy(t *testing.T) {
 	target := startEchoServer(t)
 	if err := store.Update(func(c *config.Config) {
 		for i := range c.Projects {
-			c.Projects[i].Port = portOf(target)
+			backend := fmt.Sprintf("localhost:%d", portOf(target))
+			for j := range c.Projects[i].Routes {
+				c.Projects[i].Routes[j].Backends = []string{backend}
+			}
 		}
 	}); err != nil {
 		t.Fatal(err)
@@ -107,8 +111,8 @@ func TestRuntimeServesDNSAndProxy(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	found := false
 	for time.Now().Before(deadline) && !found {
-		for host, st := range rt.Checker().Snapshot() {
-			if host == "wizard.test" && st.Up {
+		for _, st := range rt.Checker().Snapshot() {
+			if st.Up {
 				found = true
 			}
 		}
@@ -141,7 +145,7 @@ func TestRuntimeHotReloadPicksUpNewProject(t *testing.T) {
 	}()
 
 	if err := store.Update(func(c *config.Config) {
-		c.Projects = append(c.Projects, config.Project{Domain: "second.test", Port: 35200, HTTPS: true})
+		c.Projects = append(c.Projects, config.Project{Domain: "second.test", Routes: []config.Route{{Host: "@", Backends: []string{"localhost:35200"}, HTTPS: true}}})
 	}); err != nil {
 		t.Fatal(err)
 	}

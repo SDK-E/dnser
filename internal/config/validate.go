@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -45,6 +46,14 @@ func Validate(cfg Config) error {
 		}
 	}
 
+	corePorts := map[int]string{
+		s.Ports.DNS: "dns", s.Ports.HTTP: "http", s.Ports.HTTPS: "https", s.Ports.UI: "ui",
+	}
+	tcpListens := map[int]string{}
+	for port, what := range corePorts {
+		tcpListens[port] = "settings.ports." + what
+	}
+
 	seen := map[string]bool{DashboardDomain(tld): true}
 	for i, p := range cfg.Projects {
 		domain, err := NormalizeDomain(p.Domain)
@@ -58,21 +67,62 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("projects[%d]: duplicate domain %q", i, domain)
 		}
 		seen[domain] = true
-		if p.Port < 0 || p.Port > 65535 {
-			return fmt.Errorf("projects[%d] (%s): port %d out of range", i, domain, p.Port)
-		}
-		aliasSeen := map[string]bool{}
-		for j, a := range p.Aliases {
-			alias, err := NormalizeDomain(a)
+
+		hostSeen := map[string]bool{}
+		for j, route := range p.Routes {
+			host, err := NormalizeLabel(route.Host)
 			if err != nil {
-				return fmt.Errorf("projects[%d] (%s).aliases[%d]: %w", i, domain, j, err)
+				return fmt.Errorf("projects[%d] (%s).routes[%d].host: %w", i, domain, j, err)
 			}
-			if aliasSeen[alias] || seen[alias] {
-				return fmt.Errorf("projects[%d] (%s): duplicate alias %q", i, domain, alias)
+			resolved := ResolveHost(host, domain, tld)
+			if hostSeen[resolved] {
+				return fmt.Errorf("projects[%d] (%s): duplicate route host %q", i, domain, resolved)
 			}
-			aliasSeen[alias] = true
-			seen[alias] = true
+			hostSeen[resolved] = true
+			if resolved != domain && seen[resolved] {
+				return fmt.Errorf("projects[%d] (%s): duplicate route host %q", i, domain, resolved)
+			}
+			seen[resolved] = true
+			if len(route.Backends) == 0 {
+				return fmt.Errorf("projects[%d] (%s).routes[%d] (%s): at least one backend required", i, domain, j, resolved)
+			}
+			for k, b := range route.Backends {
+				h, portStr, err := net.SplitHostPort(strings.TrimSpace(b))
+				if err != nil {
+					return fmt.Errorf("projects[%d] (%s).routes[%d].backends[%d]: %q must be host:port", i, domain, j, k, b)
+				}
+				port, perr := strconv.Atoi(portStr)
+				if perr != nil {
+					return fmt.Errorf("projects[%d] (%s).routes[%d].backends[%d]: %q has non-numeric port", i, domain, j, k, b)
+				}
+				if h == "" {
+					return fmt.Errorf("projects[%d] (%s).routes[%d].backends[%d]: empty backend host in %q", i, domain, j, k, b)
+				}
+				if net.ParseIP(h) == nil {
+					if _, err := NormalizeDomain(h); err != nil {
+						return fmt.Errorf("projects[%d] (%s).routes[%d].backends[%d]: invalid backend host %q", i, domain, j, k, h)
+					}
+				}
+				if port < 1 || port > 65535 {
+					return fmt.Errorf("projects[%d] (%s).routes[%d].backends[%d]: port %d out of range", i, domain, j, k, port)
+				}
+			}
+			if route.TCP {
+				if route.Listen < 1 || route.Listen > 65535 {
+					return fmt.Errorf("projects[%d] (%s).routes[%d] (tcp): listen port required (1-65535)", i, domain, j)
+				}
+				if owner, clash := tcpListens[route.Listen]; clash {
+					return fmt.Errorf("projects[%d] (%s).routes[%d]: tcp listen %d already used by %s", i, domain, j, route.Listen, owner)
+				}
+				tcpListens[route.Listen] = fmt.Sprintf("projects[%d] (%s).routes[%d]", i, domain, j)
+			} else if route.Listen != 0 {
+				return fmt.Errorf("projects[%d] (%s).routes[%d]: listen is only valid for tcp routes", i, domain, j)
+			}
+			if route.ForceHTTPS && !route.HTTPS {
+				return fmt.Errorf("projects[%d] (%s).routes[%d] (%s): force_https requires https", i, domain, j, resolved)
+			}
 		}
+
 		nameCount := map[string]int{}
 		for j, r := range p.Records {
 			normName, err := NormalizeLabel(r.Name)
@@ -82,9 +132,6 @@ func Validate(cfg Config) error {
 			nameCount[normName]++
 			if err := ValidateRecord(r); err != nil {
 				return fmt.Errorf("projects[%d] (%s).records[%d]: %w", i, domain, j, err)
-			}
-			if (r.Type == "CNAME" || r.Type == "NS") && normName == "@" && len(p.Records) > 1 {
-				continue
 			}
 		}
 		for name, n := range nameCount {
@@ -97,6 +144,13 @@ func Validate(cfg Config) error {
 			}
 			if hasCNAME && n > 1 {
 				return fmt.Errorf("projects[%d] (%s): record %q has CNAME conflicting with other records", i, domain, name)
+			}
+		}
+		if p.Run != nil {
+			switch p.Run.Mode {
+			case "", "dev":
+			default:
+				return fmt.Errorf("projects[%d] (%s).run.mode: %q not supported (use \"dev\")", i, domain, p.Run.Mode)
 			}
 		}
 	}

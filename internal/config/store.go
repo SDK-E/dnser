@@ -47,12 +47,19 @@ func Open(path string) (*Store, error) {
 	case err != nil:
 		return nil, fmt.Errorf("read config %s: %w", path, err)
 	default:
-		if err := json.Unmarshal(data, &s.cfg); err != nil {
+		cfg, migrated, err := loadConfig(data)
+		if err != nil {
 			return nil, fmt.Errorf("parse config %s: %w", path, err)
 		}
+		s.cfg = cfg
 		fillDefaults(&s.cfg)
 		if err := Validate(s.cfg); err != nil {
 			return nil, fmt.Errorf("invalid config %s: %w", path, err)
+		}
+		if migrated {
+			if err := s.saveLocked(); err != nil {
+				return nil, fmt.Errorf("migrate config %s to v%d: %w", path, CurrentVersion, err)
+			}
 		}
 	}
 	return s, nil
@@ -149,27 +156,38 @@ func (s *Store) Update(mutate func(*Config)) error {
 			return fmt.Errorf("project %d domain: %w", i, err)
 		}
 		next.Projects[i].Domain = domain
-		aliases := next.Projects[i].Aliases[:0:0]
-		for _, a := range next.Projects[i].Aliases {
-			norm, err := NormalizeDomain(a)
-			if err != nil {
-				return fmt.Errorf("project %d alias %q: %w", i, a, err)
-			}
-			aliases = append(aliases, norm)
+		p := &next.Projects[i]
+		if p.Run != nil && p.Run.Command == "" && p.Run.Mode == "" {
+			p.Run = nil
 		}
-		next.Projects[i].Aliases = aliases
-		for j := range next.Projects[i].Records {
-			name, err := NormalizeLabel(next.Projects[i].Records[j].Name)
+		if p.Path != "" {
+			p.Path = strings.TrimSpace(p.Path)
+		}
+		for j := range p.Routes {
+			route := &p.Routes[j]
+			host, err := NormalizeLabel(route.Host)
+			if err != nil {
+				return fmt.Errorf("project %d route %d host: %w", i, j, err)
+			}
+			route.Host = host
+			backends := make([]string, 0, len(route.Backends))
+			for _, b := range route.Backends {
+				backends = append(backends, strings.TrimSpace(b))
+			}
+			route.Backends = backends
+		}
+		for j := range p.Records {
+			name, err := NormalizeLabel(p.Records[j].Name)
 			if err != nil {
 				return fmt.Errorf("project %d record %d name: %w", i, j, err)
 			}
-			next.Projects[i].Records[j].Name = name
-			next.Projects[i].Records[j].Value = strings.TrimSpace(next.Projects[i].Records[j].Value)
+			p.Records[j].Name = name
+			p.Records[j].Value = strings.TrimSpace(p.Records[j].Value)
 		}
-		if next.Projects[i].CreatedAt.IsZero() {
-			next.Projects[i].CreatedAt = now
+		if p.CreatedAt.IsZero() {
+			p.CreatedAt = now
 		}
-		next.Projects[i].UpdatedAt = now
+		p.UpdatedAt = now
 	}
 	if err := Validate(next); err != nil {
 		return fmt.Errorf("validate config: %w", err)
@@ -186,17 +204,24 @@ func (s *Store) Reload() error {
 	if err != nil {
 		return fmt.Errorf("read config %s: %w", s.path, err)
 	}
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	cfg, migrated, err := loadConfig(data)
+	if err != nil {
 		return fmt.Errorf("parse config %s: %w", s.path, err)
 	}
 	fillDefaults(&cfg)
 	if err := Validate(cfg); err != nil {
 		return fmt.Errorf("invalid config %s: %w", s.path, err)
 	}
+	if migrated {
+		s.mu.Lock()
+		s.cfg = cfg
+		err = s.saveLocked()
+		s.mu.Unlock()
+		return err
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.cfg = cfg
+	s.mu.Unlock()
 	return nil
 }
 
@@ -207,8 +232,19 @@ func (s *Store) snapshotLocked() Config {
 		cfg.Projects = make([]Project, len(s.cfg.Projects))
 		copy(cfg.Projects, s.cfg.Projects)
 		for i := range cfg.Projects {
-			cfg.Projects[i].Aliases = append([]string(nil), s.cfg.Projects[i].Aliases...)
-			cfg.Projects[i].Records = append([]Record(nil), s.cfg.Projects[i].Records...)
+			p := &cfg.Projects[i]
+			if len(p.Routes) > 0 {
+				p.Routes = make([]Route, len(p.Routes))
+				for j := range p.Routes {
+					p.Routes[j] = s.cfg.Projects[i].Routes[j]
+					p.Routes[j].Backends = append([]string(nil), s.cfg.Projects[i].Routes[j].Backends...)
+				}
+			}
+			if p.Run != nil {
+				run := *p.Run
+				p.Run = &run
+			}
+			p.Records = append([]Record(nil), s.cfg.Projects[i].Records...)
 		}
 	}
 	return cfg

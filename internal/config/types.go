@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const CurrentVersion = 1
+const CurrentVersion = 2
 
 const (
 	DefaultTLD         = "test"
@@ -37,16 +37,28 @@ type Record struct {
 	Port     uint16 `json:"port,omitempty"`
 }
 
+type Route struct {
+	Host       string   `json:"host"`
+	Backends   []string `json:"backends"`
+	TCP        bool     `json:"tcp,omitempty"`
+	Listen     int      `json:"listen,omitempty"`
+	HTTPS      bool     `json:"https,omitempty"`
+	ForceHTTPS bool     `json:"force_https,omitempty"`
+}
+
+type RunConfig struct {
+	Command string `json:"command,omitempty"`
+	Mode    string `json:"mode,omitempty"`
+}
+
 type Project struct {
-	Domain     string    `json:"domain"`
-	Port       int       `json:"port"`
-	Wildcard   bool      `json:"wildcard"`
-	HTTPS      bool      `json:"https"`
-	ForceHTTPS bool      `json:"force_https,omitempty"`
-	Aliases    []string  `json:"aliases,omitempty"`
-	Records    []Record  `json:"records,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	Domain    string     `json:"domain"`
+	Path      string     `json:"path,omitempty"`
+	Run       *RunConfig `json:"run,omitempty"`
+	Routes    []Route    `json:"routes,omitempty"`
+	Records   []Record   `json:"records,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 type Config struct {
@@ -55,11 +67,24 @@ type Config struct {
 	Projects []Project `json:"projects"`
 }
 
-func (p Project) AllHostnames() []string {
-	out := make([]string, 0, 1+len(p.Aliases))
-	out = append(out, p.Domain)
-	out = append(out, p.Aliases...)
-	return out
+func ResolveHost(host, domain, tld string) string {
+	switch host {
+	case "@", "":
+		return domain
+	case "*":
+		return "*." + domain
+	}
+	host = strings.ToLower(host)
+	if strings.Contains(host, ".") && tld != "" && !strings.HasSuffix(domain, "."+host) {
+		if host == tld || strings.HasSuffix(host, "."+tld) {
+			return strings.TrimSuffix(host, ".")
+		}
+	}
+	return host + "." + domain
+}
+
+func (r Route) Hostname(domain, tld string) string {
+	return ResolveHost(r.Host, domain, tld)
 }
 
 func DashboardDomain(tld string) string {

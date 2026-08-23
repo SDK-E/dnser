@@ -23,9 +23,11 @@ func TestE2E_HomeFlagIsolation(t *testing.T) {
 	upstreamPort := ports.Upstream - 1000
 	startFakeUpstream(t, upstreamPort)
 	writeConfig(t, home, freePorts{DNS: ports.DNS, HTTP: ports.HTTP, HTTPS: ports.HTTPS, UI: ports.UI}, upstreamPort, []config.Project{{
-		Domain:   "flagged.test",
-		Port:     ports.DNS,
-		Wildcard: true,
+		Domain: "flagged.test",
+		Routes: []config.Route{
+			{Host: "@", Backends: []string{fmt.Sprintf("localhost:%d", ports.DNS)}},
+			{Host: "*", Backends: []string{fmt.Sprintf("localhost:%d", ports.DNS)}},
+		},
 	}})
 
 	logF, err := os.Create(filepath.Join(home, "daemon.log"))

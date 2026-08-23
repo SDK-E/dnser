@@ -137,11 +137,12 @@ func TestStoreUpdatePersistsAndReloads(t *testing.T) {
 	}
 	err = s1.Update(func(c *Config) {
 		c.Projects = append(c.Projects, Project{
-			Domain:   "MyProject.test",
-			Port:     3000,
-			Wildcard: true,
-			HTTPS:    true,
-			Records:  []Record{{Type: "TXT", Name: "@", Value: "hello"}},
+			Domain: "MyProject.test",
+			Routes: []Route{
+				{Host: "@", Backends: []string{"localhost:3000"}, HTTPS: true},
+				{Host: "*", Backends: []string{"localhost:3000"}, HTTPS: true},
+			},
+			Records: []Record{{Type: "TXT", Name: "@", Value: "hello"}},
 		})
 	})
 	if err != nil {
@@ -164,7 +165,7 @@ func TestStoreUpdatePersistsAndReloads(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	p, ok := s2.FindProject("myproject.test")
-	if !ok || p.Port != 3000 || !p.Wildcard || len(p.Records) != 1 {
+	if !ok || len(p.Routes) != 2 || p.Routes[0].Backends[0] != "localhost:3000" || p.Routes[1].Host != "*" || len(p.Records) != 1 {
 		t.Errorf("reopened project mismatch: %+v ok=%v", p, ok)
 	}
 	if p.CreatedAt.IsZero() || p.UpdatedAt.Before(p.CreatedAt) {
@@ -207,7 +208,7 @@ func TestStoreExternalChangeReload(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	ext := testConfig()
-	ext.Projects = []Project{{Domain: "external.test", Port: 8080}}
+	ext.Projects = []Project{{Domain: "external.test", Routes: []Route{{Host: "@", Backends: []string{"localhost:8080"}}}}}
 	data, _ := json.MarshalIndent(ext, "", "  ")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)

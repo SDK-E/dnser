@@ -67,24 +67,62 @@ func newLinkCmd() *cobra.Command {
 				}
 			}
 
+			backend := fmt.Sprintf("localhost:%d", port)
 			err = store.Update(func(c *config.Config) {
 				for i := range c.Projects {
-					if c.Projects[i].Domain == fullDomain {
-						c.Projects[i].Port = port
-						c.Projects[i].Wildcard = wildcard || c.Projects[i].Wildcard
-						c.Projects[i].HTTPS = !noHTTPS || c.Projects[i].HTTPS
-						c.Projects[i].ForceHTTPS = forceHTTPS
-						c.Projects[i].Aliases = mergeUnique(c.Projects[i].Aliases, normAliases)
-						return
+					if c.Projects[i].Domain != fullDomain {
+						continue
 					}
+					p := &c.Projects[i]
+					patched := false
+					for j := range p.Routes {
+						switch p.Routes[j].Host {
+						case "@":
+							if len(p.Routes[j].Backends) > 0 {
+								p.Routes[j].Backends[0] = backend
+								p.Routes[j].HTTPS = !noHTTPS
+								p.Routes[j].ForceHTTPS = forceHTTPS
+								patched = true
+							}
+						case "*":
+							if len(p.Routes[j].Backends) > 0 {
+								p.Routes[j].Backends[0] = backend
+							}
+						}
+					}
+					if !patched {
+						p.Routes = append(p.Routes, config.Route{
+							Host:       "@",
+							Backends:   []string{backend},
+							HTTPS:      !noHTTPS,
+							ForceHTTPS: forceHTTPS,
+						})
+					}
+					if wildcard && !hasWildcardRoute(p.Routes) {
+						p.Routes = append(p.Routes, config.Route{Host: "*", Backends: []string{backend}, HTTPS: !noHTTPS})
+					}
+					for _, a := range normAliases {
+						if !hasRouteFor(p.Routes, a) {
+							p.Routes = append(p.Routes, config.Route{Host: a, Backends: []string{backend}, HTTPS: !noHTTPS})
+						}
+					}
+					return
 				}
-				c.Projects = append(c.Projects, config.Project{
-					Domain:     fullDomain,
-					Port:       port,
-					Wildcard:   wildcard,
+				routes := []config.Route{{
+					Host:       "@",
+					Backends:   []string{backend},
 					HTTPS:      !noHTTPS,
 					ForceHTTPS: forceHTTPS,
-					Aliases:    normAliases,
+				}}
+				if wildcard {
+					routes = append(routes, config.Route{Host: "*", Backends: []string{backend}, HTTPS: !noHTTPS})
+				}
+				for _, a := range normAliases {
+					routes = append(routes, config.Route{Host: a, Backends: []string{backend}, HTTPS: !noHTTPS})
+				}
+				c.Projects = append(c.Projects, config.Project{
+					Domain: fullDomain,
+					Routes: routes,
 				})
 			})
 			if err != nil {
@@ -121,22 +159,22 @@ func containsFlag(cmd *cobra.Command, name string) bool {
 	return cmd.Flags().Changed(name)
 }
 
-func mergeUnique(existing, add []string) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, len(existing)+len(add))
-	for _, s := range existing {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
+func hasWildcardRoute(routes []config.Route) bool {
+	for _, r := range routes {
+		if r.Host == "*" {
+			return true
 		}
 	}
-	for _, s := range add {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
+	return false
+}
+
+func hasRouteFor(routes []config.Route, host string) bool {
+	for _, r := range routes {
+		if r.Host == host {
+			return true
 		}
 	}
-	return out
+	return false
 }
 
 func newUnlinkCmd() *cobra.Command {

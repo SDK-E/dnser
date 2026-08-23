@@ -38,9 +38,9 @@ func freePort(t *testing.T) int {
 func TestRouterLookupExactWildcardAndPort(t *testing.T) {
 	r := NewRouter()
 	r.Replace([]Route{
-		{Host: "myproject.test", Target: "127.0.0.1:3000", HTTPS: true, Port: 3000},
-		{Host: "*.myproject.test", Target: "127.0.0.1:3000", HTTPS: true, Port: 3000},
-		{Host: "plain.dev", Target: "127.0.0.1:5173", Port: 5173},
+		{Host: "myproject.test", Backends: []string{"127.0.0.1:3000"}, HTTPS: true},
+		{Host: "*.myproject.test", Backends: []string{"127.0.0.1:3000"}, HTTPS: true},
+		{Host: "plain.dev", Backends: []string{"127.0.0.1:5173"}},
 	})
 
 	cases := []struct {
@@ -58,14 +58,17 @@ func TestRouterLookupExactWildcardAndPort(t *testing.T) {
 	}
 	for _, c := range cases {
 		rt, ok := r.Lookup(c.host)
-		if ok != c.ok || (ok && rt.Target != c.target) {
-			t.Errorf("Lookup(%q) = (%+v, %v), want target %q ok=%v", c.host, rt, ok, c.target, c.ok)
+		if ok != c.ok || (ok && rt.Backends[0] != c.target) {
+			t.Errorf("Lookup(%q) = (%+v, %v), want backend %q ok=%v", c.host, rt, ok, c.target, c.ok)
 		}
 	}
 
-	targets := r.Targets()
-	if len(targets) != 3 {
-		t.Errorf("targets = %v, want 3 entries", targets)
+	backends := r.Backends()
+	if len(backends) != 2 {
+		t.Errorf("backends = %v, want 2 unique entries", backends)
+	}
+	if routes := r.Routes(); len(routes) != 3 {
+		t.Errorf("routes = %d, want 3", len(routes))
 	}
 }
 
@@ -78,8 +81,8 @@ func TestProxyHTTPPlainAndRedirect(t *testing.T) {
 	manager := testManager(t)
 	router := NewRouter()
 	router.Replace([]Route{
-		{Host: "plain.dev", Target: strings.TrimPrefix(upstream.URL, "http://"), Port: 1},
-		{Host: "myproject.test", Target: strings.TrimPrefix(upstream.URL, "http://"), HTTPS: true, ForceHTTPS: true, Port: 1},
+		{Host: "plain.dev", Backends: []string{strings.TrimPrefix(upstream.URL, "http://")}},
+		{Host: "myproject.test", Backends: []string{strings.TrimPrefix(upstream.URL, "http://")}, HTTPS: true, ForceHTTPS: true},
 	})
 
 	srv := NewServer(router, manager)
@@ -129,8 +132,8 @@ func TestProxyHTTPSWithTLS(t *testing.T) {
 	manager := testManager(t)
 	router := NewRouter()
 	router.Replace([]Route{
-		{Host: "myproject.test", Target: strings.TrimPrefix(upstream.URL, "http://"), HTTPS: true, Port: 1},
-		{Host: "*.myproject.test", Target: strings.TrimPrefix(upstream.URL, "http://"), HTTPS: true, Port: 1},
+		{Host: "myproject.test", Backends: []string{strings.TrimPrefix(upstream.URL, "http://")}, HTTPS: true},
+		{Host: "*.myproject.test", Backends: []string{strings.TrimPrefix(upstream.URL, "http://")}, HTTPS: true},
 	})
 
 	srv := NewServer(router, manager)
@@ -179,7 +182,7 @@ func TestProxyHTTPSWithTLS(t *testing.T) {
 func TestUpstreamDownReturns502Page(t *testing.T) {
 	manager := testManager(t)
 	router := NewRouter()
-	router.Replace([]Route{{Host: "dead.test", Target: "127.0.0.1:1", HTTPS: true, Port: 1}})
+	router.Replace([]Route{{Host: "dead.test", Backends: []string{"127.0.0.1:1"}, HTTPS: true}})
 
 	srv := NewServer(router, manager)
 	httpPort := freePort(t)

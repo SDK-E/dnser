@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -172,7 +173,17 @@ func newListRecordsCmd() *cobra.Command {
 }
 
 func printProjectRecords(out interface{ Write([]byte) (int, error) }, p config.Project) {
-	fmt.Fprintf(out, "%s (localhost:%d)\n", p.Domain, p.Port)
+	targets := []string{}
+	for _, r := range p.Routes {
+		if r.Host == "@" {
+			targets = append(targets, r.Backends...)
+		}
+	}
+	summary := strings.Join(targets, ", ")
+	if summary == "" {
+		summary = "dns-only"
+	}
+	fmt.Fprintf(out, "%s (%s)\n", p.Domain, summary)
 	if len(p.Records) == 0 {
 		fmt.Fprintln(out, "  (implicit A records only)")
 		return

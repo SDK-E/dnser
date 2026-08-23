@@ -18,11 +18,12 @@ func testConfig() config.Config {
 	cfg := config.Default()
 	cfg.Projects = []config.Project{
 		{
-			Domain:   "myproject.test",
-			Port:     3000,
-			Wildcard: true,
-			HTTPS:    true,
-			Aliases:  []string{"myproject.dev"},
+			Domain: "myproject.test",
+			Routes: []config.Route{
+				{Host: "@", Backends: []string{"localhost:3000"}, HTTPS: true},
+				{Host: "*", Backends: []string{"localhost:3000"}, HTTPS: true},
+				{Host: "myproject.dev.test", Backends: []string{"localhost:3000"}, HTTPS: true},
+			},
 			Records: []config.Record{
 				{Type: "TXT", Name: "_verify", Value: "token-123"},
 				{Type: "A", Name: "static", Value: "10.0.0.5"},
@@ -35,7 +36,7 @@ func testConfig() config.Config {
 		},
 		{
 			Domain: "nowild.test",
-			Port:   8080,
+			Routes: []config.Route{{Host: "@", Backends: []string{"localhost:8080"}}},
 		},
 	}
 	return cfg
@@ -52,7 +53,7 @@ func TestEngineExactAndAlias(t *testing.T) {
 		t.Errorf("apex A = %s, want 127.0.0.1", got)
 	}
 
-	rrs, owned = e.Resolve("myproject.dev", dns.TypeA)
+	rrs, owned = e.Resolve("myproject.dev.test", dns.TypeA)
 	if !owned || len(rrs) != 1 {
 		t.Fatalf("alias A: owned=%v rrs=%v", owned, rrs)
 	}

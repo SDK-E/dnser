@@ -3,6 +3,7 @@ package proxyd
 import (
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 const pageStyle = `
@@ -64,6 +65,6 @@ func writeUpstreamDown(w http.ResponseWriter, r *http.Request, rt Route) {
 <p><code>%s</code> is linked to <code>%s</code>, but nothing answered there.</p>
 <p>Start your dev server, then reload this page.</p>
 <p class="hint">Health status and logs are available in the dashboard.</p>`,
-		rt.Host, rt.Target)
+		rt.Host, strings.Join(rt.Backends, ", "))
 	fmt.Fprint(w, page("Upstream unavailable", body))
 }
