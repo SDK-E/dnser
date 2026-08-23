@@ -48,6 +48,10 @@ func New(rt Runtime, version string) *Server {
 	return s
 }
 
+func (s *Server) Handler() http.Handler {
+	return s.http.Handler
+}
+
 func (s *Server) ListenAndServe(bind string, port int) error {
 	addr := fmt.Sprintf("%s:%d", bind, port)
 	ln, err := newListener(addr)

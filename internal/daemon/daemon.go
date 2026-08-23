@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -208,6 +209,13 @@ func (rt *Runtime) Checker() *health.Checker { return rt.checker }
 func (rt *Runtime) Proxy() *proxyd.Server { return rt.proxy }
 
 func (rt *Runtime) DNSPort() int { return rt.dnsPort }
+
+func (rt *Runtime) APIHandler() http.Handler {
+	if rt.ui == nil {
+		return nil
+	}
+	return rt.ui.Handler()
+}
 
 func (rt *Runtime) DashboardURL() string {
 	st := rt.store.Settings()
