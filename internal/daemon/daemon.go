@@ -36,6 +36,7 @@ type Runtime struct {
 type Options struct {
 	Store         *config.Store
 	CertsDir      string
+	DNSBindPort   int
 	DNSFallbacks  []int
 	Version       string
 	SkipListeners bool
@@ -93,7 +94,11 @@ func New(opts Options) (*Runtime, error) {
 
 	if !opts.SkipListeners {
 		bind := cfg.Settings.Bind
-		port, note, pickErr := pickDNSPort(bind, cfg.Settings.Ports.DNS, dnsFallbacks)
+		preferred := cfg.Settings.Ports.DNS
+		if opts.DNSBindPort > 0 {
+			preferred = opts.DNSBindPort
+		}
+		port, note, pickErr := pickDNSPort(bind, preferred, dnsFallbacks)
 		if pickErr != nil {
 			return nil, pickErr
 		}

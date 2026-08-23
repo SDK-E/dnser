@@ -213,3 +213,20 @@ func PickPort(bind string, preferred int, fallbacks ...int) (int, error) {
 	}
 	return 0, fmt.Errorf("no available DNS port on %s (tried %v)", bind, tried)
 }
+
+func ProbeLocal(bind string, port int, name string) error {
+	if name == "" {
+		name = "dnser.test"
+	}
+	client := &dns.Client{Net: "udp", Timeout: 2 * time.Second}
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn(name), dns.TypeA)
+	resp, _, err := client.Exchange(req, fmt.Sprintf("%s:%d", bind, port))
+	if err != nil {
+		return fmt.Errorf("probe %s:%d: %w", bind, port, err)
+	}
+	if !resp.Authoritative {
+		return fmt.Errorf("probe %s:%d: response not authoritative", bind, port)
+	}
+	return nil
+}

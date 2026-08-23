@@ -64,3 +64,7 @@ func (schtasks) IsRunning() (bool, error) {
 	}
 	return strings.Contains(strings.ToLower(string(out)), "dnser.exe"), nil
 }
+
+func (schtasks) InstallRoot(string) error { return ErrNotImplemented("elevated install") }
+func (schtasks) UninstallRoot() error     { return ErrNotImplemented("elevated uninstall") }
+func (schtasks) HasRootService() bool     { return false }

@@ -103,3 +103,7 @@ func executablePath() string {
 	}
 	return exe
 }
+
+func (systemd) InstallRoot(string) error { return ErrNotImplemented("root install") }
+func (systemd) UninstallRoot() error     { return ErrNotImplemented("root uninstall") }
+func (systemd) HasRootService() bool     { return false }

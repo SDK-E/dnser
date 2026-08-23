@@ -14,6 +14,8 @@ const (
 	label       = "enterprises.sdk.dnser"
 	plistName   = label + ".plist"
 	logFileName = "dnser.log"
+
+	rootPlistDir = "/Library/LaunchDaemons"
 )
 
 type launchd struct{}
@@ -25,6 +27,10 @@ func (launchd) Name() string { return "launchd" }
 func plistPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, "Library", "LaunchAgents", plistName)
+}
+
+func rootPlistPath() string {
+	return filepath.Join(rootPlistDir, plistName)
 }
 
 func logPath() string {
@@ -54,6 +60,33 @@ func renderPlist(binaryPath string) []byte {
 `, label, binaryPath, logPath(), logPath()))
 }
 
+func renderRootPlist(binaryPath, home string) []byte {
+	return []byte(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>%s</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>%s</string>
+    <string>start</string>
+    <string>--foreground</string>
+    <string>--bind-port</string>
+    <string>53</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DNSER_HOME</key><string>%s</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>%s</string>
+  <key>StandardErrorPath</key><string>%s</string>
+</dict>
+</plist>
+`, label, binaryPath, home, logPath(), logPath()))
+}
+
 func (l launchd) Install(binaryPath string) error {
 	if _, err := os.Stat(binaryPath); err != nil {
 		return fmt.Errorf("binary %s: %w", binaryPath, err)
@@ -75,6 +108,45 @@ func (l launchd) Install(binaryPath string) error {
 	return nil
 }
 
+func (l launchd) InstallRoot(binaryPath string) error {
+	if _, err := os.Stat(binaryPath); err != nil {
+		return fmt.Errorf("binary %s: %w", binaryPath, err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home: %w", err)
+	}
+	tmp, err := os.CreateTemp("", "dnser-daemon-*.plist")
+	if err != nil {
+		return fmt.Errorf("write temp plist: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(renderRootPlist(binaryPath, home)); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write temp plist: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write temp plist: %w", err)
+	}
+
+	script := fmt.Sprintf(
+		"cp %q %q && chown root:wheel %q && chmod 644 %q && (launchctl bootstrap system %q 2>/dev/null || launchctl load -D system %q)",
+		tmpName, rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(),
+	)
+	out, err := exec.Command("osascript", "-e",
+		fmt.Sprintf("do shell script %q with administrator privileges", script)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("install root LaunchDaemon: %w\n%s", err, out)
+	}
+	return nil
+}
+
+func (l launchd) HasRootService() bool {
+	_, err := os.Stat(rootPlistPath())
+	return err == nil
+}
+
 func (l launchd) Uninstall() error {
 	path := plistPath()
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -85,6 +157,22 @@ func (l launchd) Uninstall() error {
 	}
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("remove plist: %w", err)
+	}
+	return nil
+}
+
+func (l launchd) UninstallRoot() error {
+	if !l.HasRootService() {
+		return nil
+	}
+	script := fmt.Sprintf(
+		"(launchctl bootout system/%s 2>/dev/null; launchctl unload -D system %q 2>/dev/null); rm -f %q",
+		label, rootPlistPath(), rootPlistPath(),
+	)
+	out, err := exec.Command("osascript", "-e",
+		fmt.Sprintf("do shell script %q with administrator privileges", script)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("uninstall root LaunchDaemon: %w\n%s", err, out)
 	}
 	return nil
 }
@@ -118,6 +206,11 @@ func (launchd) IsRunning() (bool, error) {
 			}
 			return true, nil
 		}
+	}
+	if out2, err2 := exec.Command("pgrep", "-f", label).CombinedOutput(); err2 == nil && len(strings.TrimSpace(string(out2))) > 0 {
+		return true, nil
+	} else if err2 == nil {
+		_ = out2
 	}
 	return false, nil
 }

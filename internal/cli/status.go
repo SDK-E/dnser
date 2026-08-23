@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/SDK-E/dnser/internal/config"
+	"github.com/SDK-E/dnser/internal/dnscore"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -25,6 +28,16 @@ func newStatusCmd() *cobra.Command {
 			fmt.Fprintf(out, "Ports      dns=%d http=%d https=%d ui=%d\n",
 				st.Ports.DNS, st.Ports.HTTP, st.Ports.HTTPS, st.Ports.UI)
 			fmt.Fprintf(out, "Upstreams  %s\n", strings.Join(st.Upstreams, ", "))
+			dnsProbe := dnscore.ProbeLocal(st.Bind, 53, config.DashboardDomain(st.TLD))
+			if dnsProbe == nil {
+				fmt.Fprintln(out, "DNS :53     ✓ answering")
+			} else if alt := dnscore.ProbeLocal(st.Bind, 35353, config.DashboardDomain(st.TLD)); alt == nil {
+				fmt.Fprintln(out, "DNS :53     ✗ nothing answering — dnser is on :35353 (run: sudo dnser start --bind-port 53)")
+			} else {
+				fmt.Fprintln(out, "DNS :53     ✗ nothing answering (is the daemon running? dnser start)")
+			}
+			fmt.Fprintln(out)
+
 			projects := s.Projects()
 			if len(projects) == 0 {
 				fmt.Fprintln(out)

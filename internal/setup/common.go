@@ -12,6 +12,7 @@ type State struct {
 	DNSServices      map[string][]string `json:"dns_services,omitempty"`
 	DNSApplied       bool                `json:"dns_applied,omitempty"`
 	ResolvBackup     string              `json:"resolv_backup,omitempty"`
+	ServiceMode      string              `json:"service_mode,omitempty"`
 	CATrusted        bool                `json:"ca_trusted,omitempty"`
 	CAInstallPath    string              `json:"ca_install_path,omitempty"`
 	ServiceInstalled bool                `json:"service_installed,omitempty"`

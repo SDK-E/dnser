@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"net/http"
 	"os/exec"
 	"runtime"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -21,6 +23,12 @@ func newOpenCmd() *cobra.Command {
 			}
 			st := store.Settings()
 			url := fmt.Sprintf("http://%s:%d", st.Bind, st.Ports.UI)
+			client := &http.Client{Timeout: 1200 * time.Millisecond}
+			resp, err := client.Get(url + "/api/v1/status")
+			if err != nil {
+				return fmt.Errorf("dashboard unreachable at %s — is the daemon running? try: dnser setup", url)
+			}
+			_ = resp.Body.Close()
 			if _, err := openBrowser(url); err != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "Dashboard: %s\n", url)
 				fmt.Fprintf(cmd.OutOrStdout(), "(also reachable at https://%s once trusted)\n", config.DashboardDomain(st.TLD))

@@ -13,6 +13,12 @@ type Manager interface {
 	IsRunning() (bool, error)
 }
 
+type RootInstaller interface {
+	InstallRoot(binaryPath string) error
+	UninstallRoot() error
+	HasRootService() bool
+}
+
 func ErrNotImplemented(op string) error {
 	return fmt.Errorf("service %s not supported on this platform", op)
 }
