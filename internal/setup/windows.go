@@ -89,11 +89,11 @@ func RestoreDNS(r Runner, saved map[string][]string) error {
 	return nil
 }
 
-func TrustCA(r Runner, caPEM []byte, dir string) (string, error) {
+func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 	targetPath := filepath.Join(os.Getenv("ProgramData"), "DNSer", "dnser-ca.pem")
 	tmpPath, err := WriteTempFile(dir, "dnser-ca-*.pem", caPEM)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	script := fmt.Sprintf(
 		"New-Item -Force -Type Directory '%s' | Out-Null; Copy-Item '%s' '%s'; Import-Certificate -FilePath '%s' -CertStoreLocation Cert:\\LocalMachine\\Root",
@@ -102,13 +102,13 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, error) {
 	out, err := r.CombinedOutput("powershell", "-Command",
 		fmt.Sprintf("Start-Process powershell -Verb RunAs -Wait -ArgumentList '-Command','%s'", script))
 	if err != nil {
-		return "", fmt.Errorf("trust CA via elevation: %w\n%s", err, out)
+		return "", "", fmt.Errorf("trust CA via elevation: %w\n%s", err, out)
 	}
 	_ = os.Remove(tmpPath)
-	return targetPath, nil
+	return targetPath, TrustModeAdmin, nil
 }
 
-func UntrustCA(r Runner, installPath string) error {
+func UntrustCA(r Runner, installPath string, _ string) error {
 	script := fmt.Sprintf(
 		"Remove-Item -Force '%s' -ErrorAction SilentlyContinue; Remove-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\SystemCertificates\\Root\\Certificates' -ErrorAction SilentlyContinue",
 		installPath,

@@ -107,29 +107,30 @@ func activeInterfaces(r Runner) []string {
 	return ifaces
 }
 
-func TrustCA(r Runner, caPEM []byte, dir string) (string, error) {
+func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
+	mode := TrustModeAdmin
 	targetPath := "/usr/local/share/ca-certificates/dnser-ca.crt"
 	tmpPath, err := WriteTempFile(dir, "dnser-ca-*.crt", caPEM)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	script := fmt.Sprintf(
 		"mkdir -p %q && cp %q %q", filepath.Dir(targetPath), tmpPath, targetPath,
 	)
 	if out, err := r.CombinedOutput("pkexec", "/bin/sh", "-c", script); err != nil {
-		return "", fmt.Errorf("install CA cert: %w\n%s", err, out)
+		return "", "", fmt.Errorf("install CA cert: %w\n%s", err, out)
 	}
 	updateOut, updateErr := r.CombinedOutput("update-ca-certificates")
 	if updateErr != nil {
 		if out2, err2 := r.CombinedOutput("update-ca-trust", "extract"); err2 != nil {
-			return "", fmt.Errorf("refresh CA store: %w\n%s / %v\n%s", updateErr, updateOut, err2, out2)
+			return "", "", fmt.Errorf("refresh CA store: %w\n%s / %v\n%s", updateErr, updateOut, err2, out2)
 		}
 	}
 	_ = os.Remove(tmpPath)
-	return targetPath, nil
+	return targetPath, mode, nil
 }
 
-func UntrustCA(r Runner, installPath string) error {
+func UntrustCA(r Runner, installPath string, _ string) error {
 	script := fmt.Sprintf("rm -f %q", installPath)
 	if out, err := r.CombinedOutput("pkexec", "/bin/sh", "-c", script); err != nil {
 		return fmt.Errorf("remove CA cert: %w\n%s", err, out)
