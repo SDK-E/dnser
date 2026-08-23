@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,11 @@ import (
 
 func buildRunnerHelper(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "e2e-apphelper")
+	name := "e2e-apphelper"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := filepath.Join(t.TempDir(), name)
 	cmd := exec.Command("go", "build", "-o", bin, "./testdata/apphelper")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build apphelper: %v\n%s", err, out)

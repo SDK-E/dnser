@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +19,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	helperPath = filepath.Join(dir, "dnser-test-helper")
+	name := "dnser-test-helper"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	helperPath = filepath.Join(dir, name)
 	cmd := exec.Command("go", "build", "-o", helperPath, "./testdata/helper")
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
