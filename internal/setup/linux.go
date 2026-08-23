@@ -117,7 +117,11 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 	script := fmt.Sprintf(
 		"mkdir -p %q && cp %q %q", filepath.Dir(targetPath), tmpPath, targetPath,
 	)
-	if out, err := r.CombinedOutput("pkexec", "/bin/sh", "-c", script); err != nil {
+	if _, sudoErr := r.CombinedOutput("sudo", "-n", "true"); sudoErr == nil {
+		if out, err := r.CombinedOutput("sudo", "/bin/sh", "-c", script); err != nil {
+			return "", "", fmt.Errorf("install CA cert via sudo: %w\n%s", err, out)
+		}
+	} else if out, err := r.CombinedOutput("pkexec", "/bin/sh", "-c", script); err != nil {
 		return "", "", fmt.Errorf("install CA cert: %w\n%s", err, out)
 	}
 	updateOut, updateErr := r.CombinedOutput("update-ca-certificates")

@@ -99,8 +99,18 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 		"New-Item -Force -Type Directory '%s' | Out-Null; Copy-Item '%s' '%s'; Import-Certificate -FilePath '%s' -CertStoreLocation Cert:\\LocalMachine\\Root",
 		filepath.Dir(targetPath), tmpPath, targetPath, targetPath,
 	)
-	out, err := r.CombinedOutput("powershell", "-Command",
-		fmt.Sprintf("Start-Process powershell -Verb RunAs -Wait -ArgumentList '-Command','%s'", script))
+	elevatedScript := fmt.Sprintf("Start-Process powershell -Verb RunAs -Wait -ArgumentList '-Command','%s'", script)
+	directScript := script
+	if isAdmin, adminErr := r.CombinedOutput("powershell", "-Command",
+		"([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"); adminErr == nil &&
+		strings.Contains(strings.ToLower(string(isAdmin)), "true") {
+		if out, err := r.CombinedOutput("powershell", "-Command", directScript); err == nil {
+			_ = out
+			_ = os.Remove(tmpPath)
+			return targetPath, TrustModeAdmin, nil
+		}
+	}
+	out, err := r.CombinedOutput("powershell", "-Command", elevatedScript)
 	if err != nil {
 		return "", "", fmt.Errorf("trust CA via elevation: %w\n%s", err, out)
 	}

@@ -121,13 +121,14 @@ func (l launchd) installRootWithHome(binaryPath, home string) error {
 		}
 		home = h
 	}
+	dnserHome := filepath.Join(home, ".dnser")
 	tmp, err := os.CreateTemp("", "dnser-daemon-*.plist")
 	if err != nil {
 		return fmt.Errorf("write temp plist: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := tmp.Write(renderRootPlist(binaryPath, home)); err != nil {
+	if _, err := tmp.Write(renderRootPlist(binaryPath, dnserHome)); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("write temp plist: %w", err)
 	}
