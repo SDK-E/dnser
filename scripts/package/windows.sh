@@ -25,15 +25,15 @@ if ! command -v makensis >/dev/null 2>&1; then
   exit 0
 fi
 
-WIN_VERSION="$(echo "$VERSION" | tr -dc '0-9.' | awk -F. '{printf "%s.%s.%s.0", $1, $2, $3}')"
+WIN_VERSION="$(echo "$VERSION" | sed 's/[^0-9.].*$//' | awk -F. '{printf "%d.%d.%d.%d", $1, $2, $3, ($4 == "" ? 0 : $4)}')"
 
 echo "==> building NSIS installer"
 makensis \
   -DVERSION="$VERSION" \
   -DWIN_VERSION="$WIN_VERSION" \
-  -DEXE_PATH="$ROOT/$OUT_DIR/bin/dnser-desktop.exe" \
-  -DICON_PATH="$ROOT/packaging/assets/icon.ico" \
-  -DOUT_FILE="$ROOT/$OUT_DIR/DNSer_${VERSION}_windows_amd64_setup.exe" \
+  -DEXE_PATH="$(cygpath -w "$ROOT/$OUT_DIR/bin/dnser-desktop.exe")" \
+  -DICON_PATH="$(cygpath -w "$ROOT/packaging/assets/icon.ico")" \
+  -DOUT_FILE="$(cygpath -w "$ROOT/$OUT_DIR/DNSer_${VERSION}_windows_amd64_setup.exe")" \
   packaging/windows/installer.nsi
 
 echo "==> done: $OUT_DIR/DNSer_${VERSION}_windows_amd64_setup.exe"

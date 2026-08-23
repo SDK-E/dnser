@@ -83,7 +83,7 @@ else
   echo "==> appimagetool not found; AppDir left at $APPDIR"
   exit 0
 fi
-VERSION="$VERSION" ARCH="$NFPM_ARCH" "$TOOL" --comp xz "$APPDIR" \
+VERSION="$VERSION" ARCH="$NFPM_ARCH" "$TOOL" "$APPDIR" \
   "$OUT_DIR/DNSer_${VERSION}_linux_${GOARCH}.AppImage"
 rm -rf "$APPDIR"
 echo "==> done: $OUT_DIR/DNSer_${VERSION}_linux_${GOARCH}.AppImage"
