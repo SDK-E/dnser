@@ -208,6 +208,12 @@ func expandPath(path string) string {
 
 func (rt *Runtime) Runner() *runner.Supervisor { return rt.runner }
 
+func (rt *Runtime) SyncRunner() {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.syncRunner(rt.store.Get())
+}
+
 func (rt *Runtime) DepsMissing() map[string]string {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()

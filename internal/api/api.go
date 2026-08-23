@@ -11,6 +11,7 @@ import (
 	"github.com/SDK-E/dnser/internal/config"
 	"github.com/SDK-E/dnser/internal/health"
 	"github.com/SDK-E/dnser/internal/logstream"
+	"github.com/SDK-E/dnser/internal/runner"
 )
 
 type Runtime interface {
@@ -20,6 +21,9 @@ type Runtime interface {
 	DNSPort() int
 	UIPort() int
 	DashboardURL() string
+	Runner() *runner.Supervisor
+	DepsMissing() map[string]string
+	SyncRunner()
 }
 
 type Server struct {
@@ -38,6 +42,11 @@ func New(rt Runtime, version string) *Server {
 	mux.HandleFunc("DELETE /api/v1/projects/{domain}", s.handleDeleteProject)
 	mux.HandleFunc("POST /api/v1/projects/{domain}/records", s.handleAddRecord)
 	mux.HandleFunc("DELETE /api/v1/projects/{domain}/records", s.handleRemoveRecord)
+	mux.HandleFunc("GET /api/v1/runner", s.handleRunner)
+	mux.HandleFunc("POST /api/v1/runner/{domain}/restart", s.handleRunnerRestart)
+	mux.HandleFunc("POST /api/v1/runner/{domain}/stop", s.handleRunnerStop)
+	mux.HandleFunc("POST /api/v1/runner/{domain}/start", s.handleRunnerStart)
+	mux.HandleFunc("GET /api/v1/doctor", s.handleDoctor)
 	mux.HandleFunc("GET /api/v1/logs", s.handleLogs)
 	mux.HandleFunc("GET /api/v1/logs/stream", s.handleLogStream)
 	mux.Handle("/", http.HandlerFunc(s.handleStatic))
