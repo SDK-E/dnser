@@ -65,7 +65,7 @@ func runForeground(cmd *cobra.Command, bindPort int) error {
 	st := store.Settings()
 	fmt.Fprintf(out, "DNSer %s listening\n", version)
 	fmt.Fprintf(out, "  DNS      %s:%d\n", st.Bind, rt.DNSPort())
-	fmt.Fprintf(out, "  Proxy    %s:%d / %s:%d\n", st.Bind, st.Ports.HTTP, st.Bind, st.Ports.HTTPS)
+	fmt.Fprintf(out, "  Proxy    %s / %s\n", rt.Proxy().HTTPAddr(), rt.Proxy().HTTPSAddr())
 	fmt.Fprintf(out, "  Dashboard http://%s:%d  |  https://%s\n", st.Bind, st.Ports.UI, config.DashboardDomain(st.TLD))
 	if state, _ := setup.LoadState(mustConfigDir()); state.DNSApplied && rt.DNSPort() != 53 {
 		fmt.Fprintln(out)

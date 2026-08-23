@@ -203,6 +203,8 @@ func (rt *Runtime) Router() *proxyd.Router { return rt.router }
 
 func (rt *Runtime) Checker() *health.Checker { return rt.checker }
 
+func (rt *Runtime) Proxy() *proxyd.Server { return rt.proxy }
+
 func (rt *Runtime) DNSPort() int { return rt.dnsPort }
 
 func (rt *Runtime) DashboardURL() string {

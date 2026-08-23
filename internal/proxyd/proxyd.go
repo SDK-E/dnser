@@ -75,10 +75,25 @@ func (r *Router) Targets() map[string]string {
 }
 
 type Server struct {
-	router *Router
-	certs  *certs.Manager
-	http   *http.Server
-	https  *http.Server
+	router    *Router
+	certs     *certs.Manager
+	http      *http.Server
+	https     *http.Server
+	mu        sync.Mutex
+	httpAddr  string
+	httpsAddr string
+}
+
+func (s *Server) HTTPAddr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.httpAddr
+}
+
+func (s *Server) HTTPSAddr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.httpsAddr
 }
 
 func NewServer(router *Router, manager *certs.Manager) *Server {
@@ -150,6 +165,11 @@ func (s *Server) Serve(bindHTTP, bindHTTPS string) error {
 	if httpsNote != "" {
 		slog.Warn(httpsNote)
 	}
+
+	s.mu.Lock()
+	s.httpAddr = httpLn.Addr().String()
+	s.httpsAddr = httpsLn.Addr().String()
+	s.mu.Unlock()
 
 	go func() {
 		if err := s.http.Serve(httpLn); err != nil && err != http.ErrServerClosed {
