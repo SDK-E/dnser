@@ -272,6 +272,12 @@ func startDaemonExistingHome(t *testing.T, home string) *daemon {
 		case <-time.After(3 * time.Second):
 		}
 		_ = logF.Close()
+		if t.Failed() {
+			logPath := filepath.Join(home, "daemon.log")
+			if data, rerr := os.ReadFile(logPath); rerr == nil {
+				t.Logf("daemon.log (%s):\n%s", runtime.GOOS, string(data))
+			}
+		}
 	})
 	d := &daemon{
 		home: home, bin: binPath, ports: ports,

@@ -111,7 +111,9 @@ func TestE2E_APIAndDashboard(t *testing.T) {
 		}
 		events := make(chan string, 4)
 		go func() {
+			defer close(events)
 			scanner := bufio.NewScanner(resp.Body)
+			scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 			for scanner.Scan() {
 				line := scanner.Text()
 				if strings.HasPrefix(line, "data: ") {
@@ -119,13 +121,22 @@ func TestE2E_APIAndDashboard(t *testing.T) {
 					return
 				}
 			}
+			if err := scanner.Err(); err != nil {
+				events <- fmt.Sprintf("scanner-error: %v", err)
+			}
 		}()
 
 		time.Sleep(300 * time.Millisecond)
 		queryDNS(t, d.ports.DNS, "sse.apitest2.test", dns.TypeA)
 
 		select {
-		case ev := <-events:
+		case ev, ok := <-events:
+			if !ok {
+				t.Fatal("SSE stream closed before delivering an event")
+			}
+			if strings.HasPrefix(ev, "scanner-error:") {
+				t.Fatalf("SSE scanner error: %s", ev)
+			}
 			if !strings.Contains(ev, "sse.apitest2.test") {
 				t.Errorf("unexpected event: %s", ev)
 			}

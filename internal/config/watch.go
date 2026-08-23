@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ func (s *Store) Watch(onChange func(Config)) (func(), error) {
 	s.mu.RLock()
 	last := hashConfig(s.cfg)
 	s.mu.RUnlock()
+	lastMod := modTime(s.Path())
 
 	var (
 		stopOnce sync.Once
@@ -65,6 +67,8 @@ func (s *Store) Watch(onChange func(Config)) (func(), error) {
 		defer close(kick)
 		ticker := time.NewTicker(150 * time.Millisecond)
 		defer ticker.Stop()
+		fallback := time.NewTicker(750 * time.Millisecond)
+		defer fallback.Stop()
 		pending := false
 		for {
 			select {
@@ -72,6 +76,11 @@ func (s *Store) Watch(onChange func(Config)) (func(), error) {
 				return
 			case <-kick:
 				pending = true
+			case <-fallback.C:
+				if stat, err := os.Stat(s.Path()); err == nil && !stat.ModTime().Equal(lastMod) {
+					lastMod = stat.ModTime()
+					pending = true
+				}
 			case <-ticker.C:
 				if !pending {
 					continue
@@ -107,6 +116,14 @@ func (s *Store) Watch(onChange func(Config)) (func(), error) {
 		})
 	}
 	return stop, nil
+}
+
+func modTime(path string) time.Time {
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}
+	}
+	return info.ModTime()
 }
 
 func hashConfig(c Config) [32]byte {
