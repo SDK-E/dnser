@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -51,14 +52,20 @@ func TestE2E_CLIWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Chdir(cwd) }()
-	out, code = runCLI(t, home, "link", "--domain=demo", "--wildcard")
+	out, code = runCLI(t, home, "link", "--domain=demo", "--wildcard", ".")
 	_ = os.Chdir(cwd)
-	if code != 0 || !strings.Contains(out, "demo.test") || !strings.Contains(out, "5199") {
+	if code != 0 || !strings.Contains(out, "demo.test") || !strings.Contains(out, "stack: Vite") {
 		t.Fatalf("link autodetect: %d %q", code, out)
 	}
+	portRe := regexp.MustCompile(`port:\s+(\d+)`)
+	m := portRe.FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("link output missing allocated port:\n%s", out)
+	}
+	linkedPort := m[1]
 
 	out, _ = runCLI(t, home, "status")
-	if !strings.Contains(out, "demo.test") || !strings.Contains(out, "5199") {
+	if !strings.Contains(out, "demo.test") || !strings.Contains(out, linkedPort) {
 		t.Errorf("status output missing link:\n%s", out)
 	}
 
@@ -75,11 +82,11 @@ func TestE2E_CLIWorkflow(t *testing.T) {
 		t.Fatal("export failed")
 	}
 	zoneData, err := os.ReadFile(zoneFile)
-	if err != nil || !strings.Contains(string(zoneData), "$ORIGIN demo.test.") || !strings.Contains(string(zoneData), "; dnser: backend=localhost:5199") {
+	if err != nil || !strings.Contains(string(zoneData), "$ORIGIN demo.test.") || !strings.Contains(string(zoneData), fmt.Sprintf("; dnser: backend=localhost:%s", linkedPort)) {
 		t.Fatalf("zone export wrong: %v\n%s", err, zoneData)
 	}
 
-	if _, code = runCLI(t, home, "unlink", "--domain=demo.test"); code != 0 {
+	if _, code = runCLI(t, home, "unlink", "demo.test"); code != 0 {
 		t.Fatal("unlink failed")
 	}
 	if out, _ = runCLI(t, home, "status"); strings.Contains(out, "demo.test") {
@@ -107,7 +114,7 @@ func TestE2E_CLIWorkflow(t *testing.T) {
 	}
 	wildRoute := false
 	for _, route := range p.Routes {
-		if route.Host == "*" && len(route.Backends) > 0 && route.Backends[0] == "localhost:5199" {
+		if route.Host == "*" && len(route.Backends) > 0 && route.Backends[0] == "localhost:"+linkedPort {
 			wildRoute = true
 		}
 	}

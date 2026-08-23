@@ -43,6 +43,8 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newRestartCmd())
 	root.AddCommand(newLinkCmd())
 	root.AddCommand(newUnlinkCmd())
+	root.AddCommand(newPsCmd())
+	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newAddRecordCmd())
 	root.AddCommand(newRemoveRecordCmd())
 	root.AddCommand(newListRecordsCmd())
