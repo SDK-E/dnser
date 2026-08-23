@@ -22,6 +22,7 @@ Editing `/etc/hosts` for every project is fragile, doesn't support wildcards, an
 | Local CA | Auto-generated root CA, per-domain leaf certs, one-time trust |
 | Web dashboard | Dark premium UI at `https://dnser.test` — records, logs, health |
 | Live query log | Stream every resolution to CLI or dashboard |
+| Desktop app | Tray-first GUI with one-click setup, launch-at-login, auto-update checks (macOS/Windows/Linux) |
 | Port auto-detect | `package.json` / Vite / Next.js heuristics pick the right port |
 | Import/export | JSON + BIND zone files |
 | Cross-platform | macOS (launchd), Linux (systemd), Windows (services) |
@@ -40,6 +41,26 @@ dnser link --domain=myproject.test --port=3000
 open https://myproject.test
 ```
 
+## Desktop app
+
+Prefer a native window over the CLI? Grab an installer from
+[Releases](https://github.com/SDK-E/dnser/releases/latest):
+
+| Platform | Asset |
+|---|---|
+| macOS (Apple Silicon / Intel) | `DNSer_<version>_macOS_arm64.dmg` / `..._amd64.dmg` |
+| Windows | `DNSer_<version>_windows_amd64_setup.exe` |
+| Debian / Ubuntu | `dnser-desktop_<version>_linux_amd64.deb` |
+| Fedora / RHEL | `dnser-desktop_<version>_linux_*.rpm` |
+| Any Linux | `DNSer_<version>_linux_amd64.AppImage` |
+
+The desktop app embeds the same daemon and dashboard — no separate CLI needed.
+Closing the window keeps DNSer running in your tray; **Setup System
+Integration** performs the same resolver routing + CA trust as
+`dnser setup`, asking for admin permission once. The app checks GitHub for new
+releases every few hours and surfaces a download link in the tray and
+dashboard (`dnser update` does the same from the CLI).
+
 ## CLI
 
 ```
@@ -53,6 +74,7 @@ dnser remove-record ...
 dnser open             open the dashboard
 dnser logs [-f]        live query log stream
 dnser import|export    JSON or BIND zone files
+dnser update           check for a newer release
 dnser version
 ```
 
@@ -65,6 +87,15 @@ go build ./... && go test ./...
 golangci-lint run
 pnpm --dir web install && pnpm --dir web build
 go build -o dnser ./cmd/dnser
+```
+
+Desktop app development lives behind a build tag (see `packaging/README.md`
+for installer recipes and `.github/workflows/release.yml` for the release
+pipeline):
+
+```sh
+pnpm --dir web build
+go build -tags "desktop,gtk3" -o dnser-desktop ./cmd/dnser-desktop   # linux needs GTK3/webkit2gtk-4.1
 ```
 
 See `AGENTS.md` for repository conventions.

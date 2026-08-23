@@ -17,13 +17,14 @@ export interface LogEvent {
   time: string; name: string; type: string; source: string; answer: string; latency_ns: number;
 }
 export interface DesktopStatus {
-  status: Status; setup: SetupStatusView; autostart: boolean;
+  status: Status; setup: SetupStatusView; autostart: boolean; update: UpdateInfo;
 }
 export interface SetupStatusView {
   ca_trusted: boolean; ca_trust_mode?: string; routed: boolean; routing_mode: string;
   resolver_domains?: string[]; dns_port: number; needs_port_53: boolean;
 }
 export interface SetupStep { name: string; detail?: string; err?: string }
+export interface UpdateInfo { available: boolean; version?: string; url?: string }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {

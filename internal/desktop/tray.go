@@ -46,6 +46,22 @@ func (t *trayController) buildMenu() *application.Menu {
 		}
 	})
 
+	var items []*application.MenuItem
+	items = append(items, dashboard, browser)
+
+	if upd := t.svc.Update(); upd.Available {
+		label := "Download Update"
+		if upd.Version != "" {
+			label = fmt.Sprintf("Download Update %s", upd.Version)
+		}
+		updItem := application.NewMenuItem(label)
+		version := upd.URL
+		updItem.OnClick(func(*application.Context) {
+			openInBrowser(version)
+		})
+		items = append(items, application.NewMenuItemSeparator(), updItem)
+	}
+
 	autostartItem := application.NewMenuItemCheckbox("Launch at Login", autostartActive())
 	autostartItem.OnClick(func(*application.Context) {
 		target := !autostartActive()
@@ -84,9 +100,7 @@ func (t *trayController) buildMenu() *application.Menu {
 		t.app.Quit()
 	})
 
-	return application.NewMenuFromItems(
-		dashboard,
-		browser,
+	items = append(items,
 		application.NewMenuItemSeparator(),
 		autostartItem,
 		setupItem,
@@ -94,4 +108,5 @@ func (t *trayController) buildMenu() *application.Menu {
 		application.NewMenuItemSeparator(),
 		quit,
 	)
+	return application.NewMenuFromItems(items[0], items[1:]...)
 }

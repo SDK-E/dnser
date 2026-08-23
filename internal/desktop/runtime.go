@@ -32,6 +32,7 @@ type Service struct {
 	setupMu  sync.Mutex
 	readyFn  func(rt *daemon.Runtime)
 	changeFn func()
+	upd      UpdateInfo
 }
 
 func New(opts Options) (*Service, error) {

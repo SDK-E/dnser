@@ -41,6 +41,18 @@ func (b *Bridge) SetAutostart(enabled bool) error {
 	return b.svc.SetAutostart(enabled)
 }
 
+func (b *Bridge) Update() UpdateInfo {
+	return b.svc.Update()
+}
+
+func (b *Bridge) OpenUpdateURL() bool {
+	u := b.svc.Update()
+	if !u.Available || u.URL == "" {
+		return false
+	}
+	return openInBrowser(u.URL)
+}
+
 func (b *Bridge) OpenDashboardExternal() bool {
 	st := b.svc.Status()
 	if st.DashboardURL == "" {

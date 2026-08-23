@@ -10,6 +10,7 @@ type desktopStatusPayload struct {
 	Status    Status          `json:"status"`
 	Setup     SetupStatusView `json:"setup"`
 	Autostart bool            `json:"autostart"`
+	Update    UpdateInfo      `json:"update"`
 }
 
 func (s *Service) APIRoutes() http.Handler {
@@ -19,6 +20,7 @@ func (s *Service) APIRoutes() http.Handler {
 			Status:    s.Status(),
 			Setup:     s.SetupStatus(),
 			Autostart: autostartActive(),
+			Update:    s.Update(),
 		})
 	})
 	mux.HandleFunc("POST /api/v1/desktop/setup", func(w http.ResponseWriter, r *http.Request) {

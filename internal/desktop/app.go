@@ -62,6 +62,8 @@ func Run(opts Options) int {
 	tray := newTray(app, svc)
 	svc.SetChangeHook(tray.refresh)
 
+	go svc.runUpdateLoop(context.Background())
+
 	app.RegisterService(application.NewService(NewBridge(svc)))
 
 	if err := app.Run(); err != nil {

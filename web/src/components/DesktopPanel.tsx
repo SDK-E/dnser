@@ -89,6 +89,16 @@ export function DesktopPanel({ onChanged }: { onChanged?: () => void }) {
             <Badge tone="amber">DNS not routed</Badge>
           )}
           {ds && <Toggle checked={ds.autostart} onChange={toggleAutostart} label="launch at login" />}
+          {ds?.update.available && (
+            <a
+              href={ds.update.url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20"
+            >
+              update {ds.update.version} available — download
+            </a>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {!allGood && (
