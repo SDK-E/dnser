@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/SDK-E/dnser/internal/certs"
@@ -232,5 +233,115 @@ func TestLandingAndNotFoundPages(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound || !strings.Contains(string(body), "is running") {
 		t.Errorf("landing page wrong: %d %q", resp.StatusCode, body)
+	}
+}
+
+func TestPoolRoundRobinDistribution(t *testing.T) {
+	var hits atomic.Int64
+	up1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "one")
+	}))
+	defer up1.Close()
+	up2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		fmt.Fprint(w, "two")
+	}))
+	defer up2.Close()
+
+	router := NewRouter()
+	srv := NewServer(router, testManager(t))
+
+	b1 := strings.TrimPrefix(up1.URL, "http://")
+	b2 := strings.TrimPrefix(up2.URL, "http://")
+	router.Replace([]Route{{Host: "pool.test", Backends: []string{b1, b2}}})
+
+	httpPort := freePort(t)
+	if err := srv.Serve(fmt.Sprintf("127.0.0.1:%d", httpPort), fmt.Sprintf("127.0.0.1:%d", freePort(t))); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = srv.Shutdown(context.Background()) }()
+
+	seen := map[string]int{}
+	for i := 0; i < 6; i++ {
+		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/", httpPort), nil)
+		req.Host = "pool.test"
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		seen[string(body)]++
+	}
+	if seen["one"] == 0 || seen["two"] == 0 {
+		t.Fatalf("round robin never hit both backends: %v", seen)
+	}
+}
+
+func TestPoolSkipsDeadBackend(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "alive")
+	}))
+	defer up.Close()
+
+	router := NewRouter()
+	srv := NewServer(router, testManager(t))
+	srv.SetHealthFunc(func(b string) bool { return b == strings.TrimPrefix(up.URL, "http://") })
+
+	dead := "127.0.0.1:1"
+	live := strings.TrimPrefix(up.URL, "http://")
+	router.Replace([]Route{{Host: "pool.test", Backends: []string{dead, live}}})
+
+	httpPort := freePort(t)
+	if err := srv.Serve(fmt.Sprintf("127.0.0.1:%d", httpPort), fmt.Sprintf("127.0.0.1:%d", freePort(t))); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = srv.Shutdown(context.Background()) }()
+
+	for i := 0; i < 4; i++ {
+		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/", httpPort), nil)
+		req.Host = "pool.test"
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if string(body) != "alive" {
+			t.Fatalf("request %d body = %q, want always alive", i, body)
+		}
+	}
+}
+
+func TestPoolFailsOverOnConnectError(t *testing.T) {
+	var hits atomic.Int64
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		fmt.Fprint(w, "recovered")
+	}))
+	defer up.Close()
+
+	router := NewRouter()
+	srv := NewServer(router, testManager(t))
+	dead := "127.0.0.1:1"
+	live := strings.TrimPrefix(up.URL, "http://")
+	router.Replace([]Route{{Host: "failover.test", Backends: []string{dead, live}}})
+
+	httpPort := freePort(t)
+	if err := srv.Serve(fmt.Sprintf("127.0.0.1:%d", httpPort), fmt.Sprintf("127.0.0.1:%d", freePort(t))); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = srv.Shutdown(context.Background()) }()
+
+	req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/", httpPort), nil)
+	req.Host = "failover.test"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if string(body) != "recovered" {
+		t.Errorf("body = %q", body)
 	}
 }

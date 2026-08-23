@@ -129,7 +129,20 @@ func New(opts Options) (*Runtime, error) {
 			return nil, fmt.Errorf("start proxy: %w", err)
 		}
 
-		rt.checker = health.NewChecker(rt.router.Backends, 5*time.Second)
+		rt.checker = health.NewChecker(func() map[string]health.Probe {
+			probes := make(map[string]health.Probe)
+			for backend, url := range rt.router.Backends() {
+				probes[backend] = health.Probe{URL: url}
+			}
+			for _, backend := range rt.router.DialBackends() {
+				probes[backend] = health.Probe{URL: backend, Dial: true}
+			}
+			return probes
+		}, 5*time.Second)
+		rt.proxy.SetHealthFunc(func(backend string) bool {
+			st, ok := rt.checker.Get(backend)
+			return !ok || st.Up
+		})
 		rt.checker.Start()
 	}
 

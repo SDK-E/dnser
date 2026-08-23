@@ -18,11 +18,11 @@ func TestCheckerUpAndDown(t *testing.T) {
 	url := down.URL
 	down.Close()
 
-	targets := map[string]string{
-		"up.test":   up.URL,
-		"down.test": url,
+	targets := map[string]Probe{
+		"up.test":   {URL: up.URL},
+		"down.test": {URL: url},
 	}
-	c := NewChecker(func() map[string]string { return targets }, time.Hour)
+	c := NewChecker(func() map[string]Probe { return targets }, time.Hour)
 	c.poll()
 	defer c.Stop()
 
@@ -40,8 +40,8 @@ func TestCheckerUpAndDown(t *testing.T) {
 
 func TestCheckerTracksFailCount(t *testing.T) {
 	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	targets := map[string]string{"svc.test": ok.URL}
-	c := NewChecker(func() map[string]string { return targets }, time.Hour)
+	targets := map[string]Probe{"svc.test": {URL: ok.URL}}
+	c := NewChecker(func() map[string]Probe { return targets }, time.Hour)
 
 	c.poll()
 	ok.Close()

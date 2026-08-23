@@ -96,7 +96,29 @@ func (r *Router) Backends() map[string]string {
 	out := make(map[string]string, len(r.routes))
 	for _, rt := range r.routes {
 		for _, b := range rt.Backends {
+			if rt.TCP {
+				continue
+			}
 			out[b] = "http://" + b
+		}
+	}
+	return out
+}
+
+func (r *Router) DialBackends() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	seen := map[string]bool{}
+	var out []string
+	for _, rt := range r.routes {
+		if !rt.TCP {
+			continue
+		}
+		for _, b := range rt.Backends {
+			if !seen[b] {
+				seen[b] = true
+				out = append(out, b)
+			}
 		}
 	}
 	return out
@@ -120,6 +142,25 @@ type Server struct {
 	mu        sync.Mutex
 	httpAddr  string
 	httpsAddr string
+
+	healthMu sync.RWMutex
+	healthy  func(backend string) bool
+}
+
+func (s *Server) SetHealthFunc(fn func(backend string) bool) {
+	s.healthMu.Lock()
+	s.healthy = fn
+	s.healthMu.Unlock()
+}
+
+func (s *Server) isHealthy(backend string) bool {
+	s.healthMu.RLock()
+	fn := s.healthy
+	s.healthMu.RUnlock()
+	if fn == nil {
+		return true
+	}
+	return fn(backend)
 }
 
 func (s *Server) HTTPAddr() string {
@@ -170,10 +211,23 @@ func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 	s.proxy(w, r, rt)
 }
 
+func (s *Server) candidates(rt Route) []string {
+	healthy := make([]string, 0, len(rt.Backends))
+	for _, b := range rt.Backends {
+		if s.isHealthy(b) {
+			healthy = append(healthy, b)
+		}
+	}
+	if len(healthy) == 0 {
+		return rt.Backends
+	}
+	return healthy
+}
+
 func (s *Server) proxy(w http.ResponseWriter, r *http.Request, rt Route) {
 	tried := map[string]bool{}
-	for range rt.Backends {
-		backend, ok := s.router.Pick(rt.Host, rt.Backends)
+	for range s.candidates(rt) {
+		backend, ok := s.router.Pick(rt.Host, s.candidates(rt))
 		if !ok || tried[backend] {
 			continue
 		}
