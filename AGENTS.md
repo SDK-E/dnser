@@ -10,11 +10,13 @@ Go 1.27 single static binary · Cobra CLI · miekg/dns (authoritative + forwardi
 - Test: `go test ./...`
 - Lint: `golangci-lint run` (config in .golangci.yaml)
 - Full verify before finishing any change: `go build ./... && go test ./... && golangci-lint run`
+- Desktop verify when touching `internal/desktop` or `cmd/dnser-desktop`: `go build -tags desktop ./... && go vet -tags desktop ./... && golangci-lint run --build-tags desktop`
 - UI build: `pnpm --dir web install && pnpm --dir web build` (dist/ is embedded; Go build fails if missing only when building cmd/dnser after touching web/)
-- Version injection: `-ldflags "-X github.com/SDK-E/dnser/internal/cli.version=X"` (release pipeline sets it)
+- Version injection: `-ldflags "-X github.com/SDK-E/dnser/internal/cli.version=X -X main.version=X"` (release pipeline sets both)
+- Packaging recipes: `scripts/package/{icons.go,macos.sh,windows.sh,linux.sh}` + `packaging/`; Linux GUI builds need CGO with `-tags "desktop,gtk3"` (GTK3 + webkit2gtk-4.1, dev packages: libgtk-3-dev libwebkit2gtk-4.1-dev); AppImage assembly requires a native Linux host (AppImage runtime won't exec under qemu)
 
 ## Layout rules
-- `cmd/dnser` is the only main package; all logic lives under `internal/`.
+- `cmd/dnser` is the only main package, except `cmd/dnser-desktop` (the Wails GUI entrypoint); every desktop/Wails file carries the `desktop` build tag so default `go build ./...` never pulls in GUI deps (Linux needs webkit2gtk). All logic lives under `internal/`.
 - `internal/cli` — cobra commands, one file per command group; commands must stay thin, delegating to domain packages.
 - `internal/config` — the only place that reads/writes `~/.dnser/dnser.json`. Schema types, defaults, validation, atomic saves, fsnotify watch. Everything else consumes `*config.Store`.
 - `internal/api` — REST `/api/v1` + SSE log stream + embedded static UI. Depends on a `Runtime` interface (satisfied by `daemon.Runtime`), never on daemon directly (import cycle). Version string is injected via `daemon.Options.Version`.
