@@ -131,8 +131,8 @@ func (l launchd) InstallRoot(binaryPath string) error {
 	}
 
 	script := fmt.Sprintf(
-		"cp %q %q && chown root:wheel %q && chmod 644 %q && (launchctl bootstrap system %q 2>/dev/null || launchctl load -D system %q)",
-		tmpName, rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(),
+		"(launchctl bootout system/%s 2>/dev/null; true); cp %q %q && chown root:wheel %q && chmod 644 %q && launchctl bootstrap system %q",
+		label, tmpName, rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(),
 	)
 	out, err := exec.Command("osascript", "-e",
 		fmt.Sprintf("do shell script %q with administrator privileges", script)).CombinedOutput()

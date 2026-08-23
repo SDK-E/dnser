@@ -4,15 +4,23 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"os"
 	"path/filepath"
 	"time"
 )
+
+func logFingerprint(cert *x509.Certificate) {
+	sum := sha256.Sum256(cert.Raw)
+	hexFP := fmt.Sprintf("%x", sum)[:16]
+	slog.Info("local CA active", "subject", cert.Subject.CommonName, "sha256_16", hexFP)
+}
 
 const (
 	caCertFile = "dnser-ca.pem"
@@ -75,6 +83,7 @@ func (c *CA) load(certPEM, keyPEM []byte) error {
 	c.cert = cert
 	c.key = key
 	c.certPEM = certPEM
+	logFingerprint(cert)
 	return nil
 }
 
@@ -108,6 +117,7 @@ func (c *CA) create() error {
 	c.key = key
 	c.cert = cert
 	c.certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	logFingerprint(cert)
 
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	if err != nil {

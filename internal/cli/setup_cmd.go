@@ -49,6 +49,18 @@ func newSetupCmd() *cobra.Command {
 			}
 
 			fmt.Fprintln(out, "1. Starting the DNSer daemon...")
+			if state.ServiceMode == "root" {
+				mgr := service.NewManager()
+				exe0, _ := os.Executable()
+				if root, ok := mgr.(service.RootInstaller); ok {
+					fmt.Fprintln(out, "   refreshing privileged daemon...")
+					if err := root.InstallRoot(exe0); err != nil {
+						fmt.Fprintf(errOut, "   warning: refresh failed (%v); keeping previous\n", firstLine(err.Error()))
+					}
+					time.Sleep(1200 * time.Millisecond)
+					state.ServiceInstalled = true
+				}
+			}
 			if !state.ServiceInstalled {
 				mgr := service.NewManager()
 				exe, err := os.Executable()
