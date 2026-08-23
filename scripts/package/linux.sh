@@ -67,9 +67,10 @@ fi
 
 echo "==> assembling AppDir"
 rm -rf "$APPDIR"
-mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/icons/hicolor/256x256/apps" "$APPDIR/usr/share/metainfo"
 cp "$BIN" "$APPDIR/usr/bin/dnser-desktop"
 cp packaging/linux/dnser-desktop.desktop "$APPDIR/dnser.desktop"
+cp packaging/assets/icon_256.png "$APPDIR/dnser.png"
 cp packaging/assets/icon_256.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/dnser.png"
 cp packaging/assets/icon_256.png "$APPDIR/.DirIcon"
 

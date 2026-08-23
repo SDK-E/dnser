@@ -84,6 +84,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: choco install nsis -y --no-progress
+      - run: echo "C:\\Program Files (x86)\\NSIS" >> "$GITHUB_PATH"
       - run: ./scripts/package/windows.sh "${GITHUB_REF_NAME#v}" dist
       - uses: actions/upload-artifact@v4
         with:

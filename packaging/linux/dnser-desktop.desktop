@@ -5,5 +5,5 @@ Comment=Local DNS management for development
 Exec=/usr/bin/dnser-desktop
 Icon=dnser
 Terminal=false
-Categories=Development;Network;
+Categories=Development;
 StartupWMClass=dnser-desktop
