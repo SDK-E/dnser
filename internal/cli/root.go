@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -11,6 +12,7 @@ import (
 
 var (
 	configPath string
+	homeDir    string
 	verbose    bool
 )
 
@@ -29,6 +31,7 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 	root.PersistentFlags().StringVar(&configPath, "config", "", "path to dnser.json (default ~/.dnser/dnser.json)")
+	root.PersistentFlags().StringVar(&homeDir, "home", "", "dnser home directory (default ~/.dnser; used by the privileged daemon)")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "V", false, "verbose output")
 
 	root.AddCommand(newVersionCmd())
@@ -62,6 +65,9 @@ func Execute() int {
 func resolveConfigPath() (string, error) {
 	if configPath != "" {
 		return configPath, nil
+	}
+	if homeDir != "" {
+		return filepath.Join(homeDir, "dnser.json"), nil
 	}
 	return config.DefaultPath()
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -47,11 +49,7 @@ func New(opts Options) (*Runtime, error) {
 		return nil, fmt.Errorf("daemon: store required")
 	}
 	if opts.CertsDir == "" {
-		dir, err := config.DefaultDir()
-		if err != nil {
-			return nil, err
-		}
-		opts.CertsDir = dir + "/certs"
+		opts.CertsDir = filepath.Dir(opts.Store.Path()) + string(os.PathSeparator) + "certs"
 	}
 	dnsFallbacks := opts.DNSFallbacks
 	if len(dnsFallbacks) == 0 {

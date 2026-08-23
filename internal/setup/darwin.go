@@ -89,12 +89,12 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 	targetPath := filepath.Join("/Library/Application Support/DNSer", "dnser-ca.pem")
 
 	userScript := fmt.Sprintf(
-		"mkdir -p %q && cp %q %q && security add-trusted-cert -r trustRoot -p ssl -p basic -k %q %q",
-		filepath.Dir(targetPath), tmpPath, targetPath, loginKeychain(), targetPath,
+		"security add-trusted-cert -r trustRoot -p ssl -p basic -k %q %q",
+		loginKeychain(), caPEMPath(dir),
 	)
 	if _, uerr := r.CombinedOutput("/bin/zsh", "-c", userScript); uerr == nil {
 		_ = os.Remove(tmpPath)
-		return targetPath, TrustModeUser, nil
+		return caPEMPath(dir), TrustModeUser, nil
 	}
 
 	adminScript := fmt.Sprintf(
@@ -108,6 +108,10 @@ func TrustCA(r Runner, caPEM []byte, dir string) (string, string, error) {
 		return "", "", fmt.Errorf("trust CA failed (user and admin): %w\n%s", aerr, out)
 	}
 	return targetPath, TrustModeAdmin, nil
+}
+
+func caPEMPath(dir string) string {
+	return filepath.Join(dir, "certs", "dnser-ca.pem")
 }
 
 func loginKeychain() string {

@@ -73,11 +73,9 @@ func renderRootPlist(binaryPath, home string) []byte {
     <string>--foreground</string>
     <string>--bind-port</string>
     <string>53</string>
+    <string>--home</string>
+    <string>%s</string>
   </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>DNSER_HOME</key><string>%s</string>
-  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>%s</string>
@@ -109,12 +107,19 @@ func (l launchd) Install(binaryPath string) error {
 }
 
 func (l launchd) InstallRoot(binaryPath string) error {
+	return l.installRootWithHome(binaryPath, "")
+}
+
+func (l launchd) installRootWithHome(binaryPath, home string) error {
 	if _, err := os.Stat(binaryPath); err != nil {
 		return fmt.Errorf("binary %s: %w", binaryPath, err)
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("resolve home: %w", err)
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolve home: %w", err)
+		}
+		home = h
 	}
 	tmp, err := os.CreateTemp("", "dnser-daemon-*.plist")
 	if err != nil {
@@ -131,8 +136,8 @@ func (l launchd) InstallRoot(binaryPath string) error {
 	}
 
 	script := fmt.Sprintf(
-		"(launchctl bootout system/%s 2>/dev/null; true); cp %q %q && chown root:wheel %q && chmod 644 %q && launchctl bootstrap system %q",
-		label, tmpName, rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(),
+		"(launchctl bootout system/%s 2>/dev/null; true); sleep 2; cp %q %q && chown root:wheel %q && chmod 644 %q && (launchctl bootstrap system %q || (sleep 3 && launchctl bootstrap system %q) || launchctl load -D system %q)",
+		label, tmpName, rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(), rootPlistPath(),
 	)
 	out, err := exec.Command("osascript", "-e",
 		fmt.Sprintf("do shell script %q with administrator privileges", script)).CombinedOutput()
