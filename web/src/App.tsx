@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type Project, type Status } from "./api";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { LogsPanel } from "./components/LogsPanel";
+import { DesktopPanel } from "./components/DesktopPanel";
 
 export default function App() {
   const [status, setStatus] = useState<Status | null>(null);
@@ -60,6 +61,8 @@ export default function App() {
           Cannot reach daemon API — is <code className="font-mono">dnser start</code> running? ({error})
         </div>
       )}
+
+      <DesktopPanel onChanged={refresh} />
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[1fr_420px]">
         <ProjectsPanel projects={projects} onChanged={refresh} />

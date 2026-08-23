@@ -16,6 +16,14 @@ export interface Project {
 export interface LogEvent {
   time: string; name: string; type: string; source: string; answer: string; latency_ns: number;
 }
+export interface DesktopStatus {
+  status: Status; setup: SetupStatusView; autostart: boolean;
+}
+export interface SetupStatusView {
+  ca_trusted: boolean; ca_trust_mode?: string; routed: boolean; routing_mode: string;
+  resolver_domains?: string[]; dns_port: number; needs_port_53: boolean;
+}
+export interface SetupStep { name: string; detail?: string; err?: string }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -28,6 +36,21 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+export const desktop = {
+  status: async (): Promise<DesktopStatus | null> => {
+    try {
+      return await req<DesktopStatus>("/api/v1/desktop/status");
+    } catch (e) {
+      if (e instanceof TypeError) throw e;
+      return null;
+    }
+  },
+  runSetup: () => req<{ steps: SetupStep[] }>("/api/v1/desktop/setup", { method: "POST" }),
+  revert: () => req<{ ok: string }>("/api/v1/desktop/revert", { method: "POST" }),
+  setAutostart: (enabled: boolean) =>
+    req<{ enabled: boolean }>("/api/v1/desktop/autostart", { method: "POST", body: JSON.stringify({ enabled }) }),
+};
 
 export const api = {
   status: () => req<Status>("/api/v1/status"),
