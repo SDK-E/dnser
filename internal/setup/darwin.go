@@ -156,7 +156,7 @@ func resolverPath(domain string) string {
 func WriteResolverDomain(r Runner, domain, bind string, port int) error {
 	script := fmt.Sprintf(
 		"mkdir -p /etc/resolver && printf 'nameserver %s\\nport %d\\n' > %s",
-		bind, port, shellQuote(resolverPath(domain)),
+		bind, port, ShellQuote(resolverPath(domain)),
 	)
 	out, err := elevatedScript(r, script)
 	if err != nil {
@@ -171,7 +171,7 @@ func RemoveResolverFiles(r Runner, domains []string) error {
 	}
 	parts := make([]string, 0, len(domains)+1)
 	for _, d := range domains {
-		parts = append(parts, "rm -f "+shellQuote(resolverPath(d)))
+		parts = append(parts, "rm -f "+ShellQuote(resolverPath(d)))
 	}
 	parts = append(parts, "rmdir /etc/resolver 2>/dev/null || true")
 	out, err := elevatedScript(r, strings.Join(parts, "; "))

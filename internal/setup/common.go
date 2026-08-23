@@ -167,10 +167,6 @@ func ShellJoin(parts ...string) string {
 	return strings.Join(out, " ")
 }
 
-func shellQuote(s string) string {
-	return ShellQuote(s)
-}
-
 func usableUpstreams(servers []string) []string {
 	out := make([]string, 0, len(servers))
 	seen := map[string]bool{}
