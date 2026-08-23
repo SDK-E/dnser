@@ -160,12 +160,9 @@ func (s *Supervisor) Start(spec Spec) error {
 }
 
 func (s *Supervisor) Stop(domain string) bool {
-	s.mu.Lock()
+	s.mu.RLock()
 	app, ok := s.apps[domain]
-	if ok {
-		app.stopping = true
-	}
-	s.mu.Unlock()
+	s.mu.RUnlock()
 	if !ok {
 		return false
 	}
@@ -206,11 +203,6 @@ func (s *Supervisor) Remove(domain string) {
 }
 
 func (s *Supervisor) Shutdown() {
-	s.mu.Lock()
-	for _, app := range s.apps {
-		app.stopping = true
-	}
-	s.mu.Unlock()
 	var wg sync.WaitGroup
 	for _, app := range s.snapshotApps() {
 		wg.Add(1)
