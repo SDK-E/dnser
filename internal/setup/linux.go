@@ -34,6 +34,28 @@ func CaptureDNS(_ Runner) []string {
 	return usableUpstreams(servers)
 }
 
+func ReassertDNS(r Runner, bind string, saved map[string][]string) error {
+	if useResolved(r) {
+		for _, iface := range saved["__resolved__"] {
+			out, err := r.CombinedOutput("resolvectl", "dns", iface, bind)
+			if err != nil {
+				return fmt.Errorf("resolvectl dns %s: %w\n%s", iface, err, out)
+			}
+			_, _ = r.CombinedOutput("resolvectl", "domain", iface, "~.")
+		}
+		return nil
+	}
+	data, err := os.ReadFile(resolvConf)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", resolvConf, err)
+	}
+	content := "nameserver " + bind + "\n# previous entries follow\n" + stripNameservers(string(data))
+	if err := os.WriteFile(resolvConf, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", resolvConf, err)
+	}
+	return nil
+}
+
 func useResolved(r Runner) bool {
 	_, err := r.CombinedOutput("resolvectl", "version")
 	return err == nil

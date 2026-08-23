@@ -60,6 +60,17 @@ func isIPLine(s string) bool {
 	return s != "" && (s[0] >= '0' && s[0] <= '9' || strings.Contains(s, ":"))
 }
 
+func ReassertDNS(r Runner, bind string, saved map[string][]string) error {
+	for iface := range saved {
+		out, err := r.CombinedOutput("netsh", "interface", "ip", "set",
+			"dns", "name="+iface, "source=static", "addr="+bind, "register=primary")
+		if err != nil {
+			return fmt.Errorf("set dns for %s: %w\n%s", iface, err, out)
+		}
+	}
+	return nil
+}
+
 func CaptureDNS(r Runner) []string {
 	ifaces, err := activeInterfaces(r)
 	if err != nil {
