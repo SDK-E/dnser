@@ -59,10 +59,20 @@ func DetectPort(dir string) (Result, error) {
 		return detectFromPackageJSON(data, dir), nil
 	}
 	if fileExists(filepath.Join(dir, "manage.py")) {
-		return Result{Port: 8000, Framework: "Django", Confidence: "medium"}, nil
+		return Result{Port: 8000, Framework: StackDjango, Confidence: "medium"}, nil
+	}
+	if fw := detectComposer(dir); fw != "" {
+		port := 8000
+		if fw == StackSymfony {
+			port = 8000
+		}
+		return Result{Port: port, Framework: fw, Confidence: "high"}, nil
+	}
+	if fw := detectSpring(dir); fw != "" {
+		return Result{Port: 8080, Framework: fw, Confidence: "high"}, nil
 	}
 	if fileExists(filepath.Join(dir, "Gemfile")) {
-		return Result{Port: 3000, Framework: "Rails", Confidence: "medium"}, nil
+		return Result{Port: 3000, Framework: StackRails, Confidence: "medium"}, nil
 	}
 	if fileExists(filepath.Join(dir, "Cargo.toml")) {
 		return Result{Port: 8080, Framework: "Rust (Axum/Actix)", Confidence: "low"}, nil
@@ -156,4 +166,197 @@ func validPort(p int) bool { return p >= 1 && p <= 65535 }
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+const (
+	StackNextJS       = "Next.js"
+	StackNuxt         = "Nuxt"
+	StackVite         = "Vite"
+	StackSvelte       = "SvelteKit"
+	StackAstro        = "Astro"
+	StackAngular      = "Angular"
+	StackRemix        = "Remix"
+	StackCRA          = "Create React App"
+	StackDjango       = "Django"
+	StackRails        = "Rails"
+	StackGo           = "Go service"
+	StackRust         = "Rust (Axum/Actix)"
+	StackLaravel      = "Laravel"
+	StackSymfony      = "Symfony"
+	StackSpringMaven  = "Spring Boot (maven)"
+	StackSpringGradle = "Spring Boot (gradle)"
+)
+
+type Recipe struct {
+	Command  []string
+	UseShell bool
+	PortEnv  bool
+}
+
+func DetectStack(dir string) (Result, Recipe, error) {
+	res, err := DetectPort(dir)
+	if err != nil {
+		return res, Recipe{}, err
+	}
+	return res, buildRecipe(res.Framework, dir), nil
+}
+
+func buildRecipe(framework, dir string) Recipe {
+	pm := packageManager(dir)
+	switch framework {
+	case StackNextJS, StackNuxt, StackRemix, StackCRA:
+		return Recipe{Command: pm.run("dev"), PortEnv: true}
+	case StackVite, StackSvelte, StackAstro:
+		if pm.name == "npm" {
+			return Recipe{Command: []string{"npm", "run", "dev", "--", "--port", "{port}"}}
+		}
+		return Recipe{Command: append(pm.run("dev"), "--port", "{port}")}
+	case StackAngular:
+		if pm.name == "npm" {
+			return Recipe{Command: []string{"npm", "run", "start", "--", "--port", "{port}"}}
+		}
+		return Recipe{Command: append(pm.run("start"), "--port", "{port}")}
+	case StackDjango:
+		return Recipe{Command: []string{"python", "manage.py", "runserver", "127.0.0.1:{port}"}}
+	case StackRails:
+		return Recipe{Command: []string{"bin/rails", "server", "-p", "{port}", "-b", "127.0.0.1"}}
+	case StackGo:
+		return Recipe{Command: []string{"go", "run", "."}, PortEnv: true}
+	case StackRust:
+		return Recipe{Command: []string{"cargo", "run"}, PortEnv: true}
+	case StackLaravel:
+		return Recipe{Command: []string{"php", "artisan", "serve", "--host=127.0.0.1", "--port={port}"}}
+	case StackSymfony:
+		return Recipe{Command: []string{"php", "-S", "127.0.0.1:{port}", "-t", "public"}}
+	case StackSpringMaven:
+		if fileExists(filepath.Join(dir, "mvnw")) {
+			return Recipe{Command: []string{"./mvnw", "-q", "spring-boot:run", "-Dspring-boot.run.arguments=--server.port={port}"}}
+		}
+		return Recipe{Command: []string{"mvn", "-q", "spring-boot:run", "-Dspring-boot.run.arguments=--server.port={port}"}}
+	case StackSpringGradle:
+		wrapper := "./gradlew"
+		if !fileExists(filepath.Join(dir, "gradlew")) {
+			wrapper = "gradle"
+		}
+		return Recipe{Command: []string{wrapper, "bootRun", "--args=--server.port={port}"}}
+	}
+	return Recipe{}
+}
+
+type pkgManager struct {
+	name    string
+	bin     string
+	runArgs []string
+}
+
+func (p pkgManager) run(script string) []string {
+	return append([]string{p.bin}, append(append([]string{}, p.runArgs...), script)...)
+}
+
+func packageManager(dir string) pkgManager {
+	switch {
+	case fileExists(filepath.Join(dir, "bun.lockb")), fileExists(filepath.Join(dir, "bun.lock")):
+		return pkgManager{name: "bun", bin: "bun"}
+	case fileExists(filepath.Join(dir, "pnpm-lock.yaml")):
+		return pkgManager{name: "pnpm", bin: "pnpm", runArgs: []string{"run"}}
+	case fileExists(filepath.Join(dir, "yarn.lock")):
+		return pkgManager{name: "yarn", bin: "yarn"}
+	default:
+		return pkgManager{name: "npm", bin: "npm", runArgs: []string{"run"}}
+	}
+}
+
+func DepsInstalled(dir string, framework string) bool {
+	markers := map[string][]string{
+		StackNextJS: {"node_modules"}, StackNuxt: {"node_modules"},
+		StackVite: {"node_modules"}, StackSvelte: {"node_modules"},
+		StackAstro: {"node_modules"}, StackAngular: {"node_modules"},
+		StackRemix: {"node_modules"}, StackCRA: {"node_modules"},
+		StackLaravel: {"vendor"}, StackSymfony: {"vendor"},
+		StackRust: {"target"},
+	}
+	files, ok := markers[framework]
+	if !ok {
+		return true
+	}
+	for _, f := range files {
+		info, err := os.Stat(filepath.Join(dir, f))
+		if err == nil && info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+func InstallHint(framework string) string {
+	hints := map[string]string{
+		StackNextJS:  "pnpm install  (or npm install)",
+		StackNuxt:    "pnpm install",
+		StackVite:    "pnpm install",
+		StackSvelte:  "pnpm install",
+		StackAstro:   "pnpm install",
+		StackAngular: "npm install",
+		StackRemix:   "npm install",
+		StackCRA:     "npm install",
+		StackLaravel: "composer install",
+		StackSymfony: "composer install",
+		StackRust:    "cargo fetch",
+	}
+	if h, ok := hints[framework]; ok {
+		return h
+	}
+	return ""
+}
+
+func detectComposer(dir string) string {
+	if data, err := os.ReadFile(filepath.Join(dir, "composer.json")); err == nil {
+		var comp struct {
+			Require map[string]string `json:"require"`
+		}
+		if json.Unmarshal(data, &comp) == nil {
+			if _, ok := comp.Require["laravel/framework"]; ok {
+				return StackLaravel
+			}
+			if _, ok := comp.Require["symfony/framework-bundle"]; ok {
+				return StackSymfony
+			}
+		}
+	}
+	switch {
+	case fileExists(filepath.Join(dir, "artisan")):
+		return StackLaravel
+	case fileExists(filepath.Join(dir, "symfony.lock")):
+		return StackSymfony
+	}
+	return ""
+}
+
+func detectSpring(dir string) string {
+	if fileExists(filepath.Join(dir, "pom.xml")) &&
+		fileContains(filepath.Join(dir, "pom.xml"), "spring-boot-starter", "spring-boot-maven-plugin") {
+		return StackSpringMaven
+	}
+	for _, g := range []string{"build.gradle", "build.gradle.kts"} {
+		if fileExists(filepath.Join(dir, g)) && fileContains(filepath.Join(dir, g), "org.springframework.boot") {
+			return StackSpringGradle
+		}
+	}
+	return ""
+}
+
+func containsAny(haystack string, needles ...string) bool {
+	for _, n := range needles {
+		if strings.Contains(haystack, n) {
+			return true
+		}
+	}
+	return false
+}
+
+func fileContains(path string, needles ...string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return containsAny(string(data), needles...)
 }
