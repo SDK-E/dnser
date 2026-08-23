@@ -181,6 +181,10 @@ func (rt *Runtime) Reload(cfg config.Config) error {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	slog.Info("config changed; reloading zones and routes", "projects", len(cfg.Projects))
+	rt.dns.UseEngine(dnscore.NewEngine(cfg))
+	if rt.dns != nil && rt.dns.Cache() != nil {
+		rt.dns.Cache().InvalidateAll()
+	}
 	rt.applyRoutes(cfg)
 	select {
 	case rt.reloaded <- struct{}{}:

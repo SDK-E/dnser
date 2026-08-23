@@ -49,6 +49,22 @@ func NewServer(opts Options) (*Server, error) {
 	}, nil
 }
 
+func (s *Server) UseEngine(e *Engine) {
+	s.mu.Lock()
+	s.engine = e
+	s.mu.Unlock()
+}
+
+func (s *Server) activeEngine() *Engine {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.engine
+}
+
+func (s *Server) Cache() *Cache {
+	return s.cache
+}
+
 func (s *Server) Handle(w dns.ResponseWriter, req *dns.Msg) {
 	start := time.Now()
 	if len(req.Question) == 0 {
@@ -66,7 +82,8 @@ func (s *Server) Handle(w dns.ResponseWriter, req *dns.Msg) {
 }
 
 func (s *Server) answer(req *dns.Msg, name string, qtype uint16) (*dns.Msg, logstream.Source) {
-	if rrs, owned := s.engine.Resolve(name, qtype); owned {
+	engine := s.activeEngine()
+	if rrs, owned := engine.Resolve(name, qtype); owned {
 		resp := new(dns.Msg)
 		resp.SetReply(req)
 		resp.Authoritative = true

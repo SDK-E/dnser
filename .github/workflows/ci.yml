@@ -53,3 +53,26 @@ jobs:
           node-version: 24
       - run: pnpm --dir web install --frozen-lockfile && pnpm --dir web build
       - run: GOOS=${{ matrix.goos }} go build -o /dev/null ./cmd/dnser
+
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build UI (embedded assets)
+        run: pnpm --dir web install --frozen-lockfile && pnpm --dir web build
+      - name: End-to-end tests (real binary, real ports)
+        run: go test ./internal/e2e/ -count=1 -v -timeout 10m

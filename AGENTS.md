@@ -26,6 +26,7 @@ Go 1.27 single static binary · Cobra CLI · miekg/dns (authoritative + forwardi
 - `internal/setup`, `internal/service` — OS-specific files carry build tags: `darwin.go`, `linux.go`, `windows.go`. Never put syscall/OS-specific calls in shared files.
 - `internal/logstream` — ring buffer + broadcast hub for query events; `internal/daemon` wires DNS, proxy, health checks and the API server into one process with fsnotify-driven hot reload.
 - Tests live next to code as `*_test.go`; integration tests bind high ports (>30000) never privileged ports.
+- `internal/e2e` — black-box end-to-end suite: builds the real binary, spawns it on free high ports with a sandboxed DNSER_HOME and a fake upstream resolver, exercises DNS wire queries, TLS proxy, API/SSE, CLI and hot reload. Runs on every OS in CI (`go test ./internal/e2e/`).
 
 ## Conventions
 - No comments in code. Explain design decisions here or in README instead.

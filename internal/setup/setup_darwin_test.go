@@ -4,6 +4,7 @@ package setup
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -67,8 +68,9 @@ func TestTrustCAPrefersSilentUserDomain(t *testing.T) {
 	if mode != TrustModeUser {
 		t.Errorf("mode = %q, want user (silent first)", mode)
 	}
-	if path != "/Library/Application Support/DNSer/dnser-ca.pem" {
-		t.Errorf("install path = %q", path)
+	wantPath := filepath.Join(dir, "certs", "dnser-ca.pem")
+	if path != wantPath {
+		t.Errorf("install path = %q, want %q", path, wantPath)
 	}
 	joined := strings.Join(r.Commands(), "\n")
 	if !strings.Contains(joined, "add-trusted-cert -r trustRoot") {
