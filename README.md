@@ -8,9 +8,9 @@ One binary turns your machine into a fully-featured local nameserver: launch pro
 
 Editing `/etc/hosts` for every project is fragile, doesn't support wildcards, and can't do HTTPS. DNSer runs a **real DNS server** on loopback:
 
-- `dnser link --domain=myproject.test --port=3000` — done. Every subdomain resolves instantly.
-- `https://myproject.test` proxies to `localhost:3000` with a valid local TLS cert.
-- Wildcards work out of the box: `api.myproject.test`, `*.staging.myproject.test`.
+- `dnser link ~/code/myproject` — done. It detects the stack, picks a free port, starts your dev server, and puts it on `https://myproject.test`.
+- Every subdomain resolves instantly: `api.myproject.test`, `pr-42.preview.myproject.test`.
+- Multiple backends per hostname get round-robin load balancing with health-checked failover; raw TCP forwarding works too.
 - Unknown queries forward upstream with caching, so normal browsing is unaffected.
 
 ## Features
@@ -18,12 +18,13 @@ Editing `/etc/hosts` for every project is fragile, doesn't support wildcards, an
 | | |
 |---|---|
 | Real DNS server | A, AAAA, CNAME, TXT, MX, SRV, NS + wildcards, hot-reloaded |
-| HTTP/HTTPS proxy | SNI-routed reverse proxy to dev server ports |
+| HTTP/HTTPS proxy | SNI-routed reverse proxy with backend pools, round-robin and health failover |
+| TCP forwarding | Per-route raw TCP listeners for non-HTTP services |
+| Managed dev servers | `dnser link` runs Next.js, Nuxt, Vite, SvelteKit, Astro, Angular, Remix, Laravel, Symfony, Spring Boot, Django, Rails, Go, Rust — restarts crashed apps with backoff |
 | Local CA | Auto-generated root CA, per-domain leaf certs, one-time trust |
-| Web dashboard | Dark premium UI at `https://dnser.test` — records, logs, health |
-| Live query log | Stream every resolution to CLI or dashboard |
-| Desktop app | Tray-first GUI with one-click setup, launch-at-login, auto-update checks (macOS/Windows/Linux) |
-| Port auto-detect | `package.json` / Vite / Next.js heuristics pick the right port |
+| Web dashboard | Dark premium UI at `https://dnser.test` — project cards, live logs, health dots, ⌘K palette, doctor panel |
+| Live query log | Stream every resolution and app output line to CLI or dashboard |
+| Desktop app | Tray-first GUI: per-project tray menu, one-click setup, launch-at-login, auto-update checks (macOS/Windows/Linux) |
 | Import/export | JSON + BIND zone files |
 | Cross-platform | macOS (launchd), Linux (systemd), Windows (services) |
 
@@ -36,10 +37,33 @@ dnser                          # guided wizard: setup → link → open dashboar
 ```
 
 ```sh
-dnser link --domain=myproject.test --port=3000
-# ✓ myproject.test → localhost:3000 (wildcard *.myproject.test enabled)
-open https://myproject.test
+cd ~/code/my-project
+dnser link .
+# ✓ linked my-project.test
+#   stack: Next.js · runs: pnpm run dev · port: 52123
+open https://my-project.test
 ```
+
+The dev server is now managed: it starts with the daemon, restarts on crash,
+and its output lands in the dashboard and `~/.dnser/logs/`. Prefer to run it
+yourself? Add `--no-run --port 3000` and DNSer only proxies.
+
+### Load balancing & TCP
+
+Routes are the source of truth in `~/.dnser/dnser.json`:
+
+```json
+{
+  "routes": [
+    { "host": "@", "backends": ["localhost:3001", "localhost:3002"], "https": true },
+    { "host": "tcp", "tcp": true, "listen": 5432, "backends": ["localhost:5433"] }
+  ]
+}
+```
+
+Requests round-robin across healthy backends; dead ones are skipped
+automatically. TCP routes bind an explicit local listen port and pipe raw
+bytes.
 
 ## Desktop app
 
@@ -66,13 +90,17 @@ dashboard (`dnser update` does the same from the CLI).
 ```
 dnser setup            one-time OS configuration (resolver + CA trust)
 dnser start|stop|restart|status
-dnser link --domain=myproject.test [--port] [--tld] [--alias ...]
-dnser unlink --domain=myproject.test
+dnser link <path>      detect stack, allocate port, manage the dev server
+                       flags: --domain --command --no-run --port --wildcard
+                              --alias --tld --no-https --force-https
+dnser unlink <path|domain> [--keep-dns]
+dnser ps               managed dev servers and their state
+dnser doctor           diagnose ports, upstreams, resolver, dependencies
 dnser add-record --domain=myproject.test --type=TXT --name=x --value=y
 dnser list-records [domain]
 dnser remove-record ...
 dnser open             open the dashboard
-dnser logs [-f]        live query log stream
+dnser logs [-f]        live query + app log stream
 dnser import|export    JSON or BIND zone files
 dnser update           check for a newer release
 dnser version
@@ -88,6 +116,21 @@ golangci-lint run
 pnpm --dir web install && pnpm --dir web build
 go build -o dnser ./cmd/dnser
 ```
+
+### Project overrides
+
+A `.dnser.yaml` in the project root overrides detection:
+
+```yaml
+command: pnpm dev --port {port}
+```
+
+`{port}` is replaced by the persistent port allocated at link time.
+Precedence: `--command` flag > `.dnser.yaml` > built-in recipe.
+
+Dependencies are never installed automatically — if `node_modules`, `vendor`
+or similar is missing, `dnser ps` and the dashboard's doctor panel tell you
+the exact command to run.
 
 Desktop app development lives behind a build tag (see `packaging/README.md`
 for installer recipes and `.github/workflows/release.yml` for the release

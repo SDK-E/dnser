@@ -23,8 +23,11 @@ Go 1.27 single static binary · Cobra CLI · miekg/dns (authoritative + forwardi
 - `internal/web` (`web/web.go`) — go:embed of `web/dist`; keep `web/dist/.gitkeep` committed so fresh checkouts compile without a UI build.
 - `internal/setup` state file `~/.dnser/setup-state.json` records exactly what setup changed; `unsetup` restores from it only.
 - Port fallbacks when privileged ports are taken: DNS 53→5353→35353 (macOS owns 5353 via mDNSResponder), HTTP 80→8080, HTTPS 443→8443 — never fail hard on occupied privileged ports.
-- `internal/dnscore` — DNS engine: zone matching (exact, wildcard), record rendering, upstream forwarding with cache. Imports miekg/dns; no HTTP code here.
-- `internal/proxyd` — reverse proxy + SNI routing; `internal/certs` — CA + leaf issuance; both consume config.Store snapshots.
+- `internal/dnscore` — DNS engine: zone matching (exact, wildcard, route labels), record rendering, upstream forwarding with cache. Imports miekg/dns; no HTTP code here.
+- `internal/proxyd` — reverse proxy + SNI routing with backend pools, round-robin (`Router.Pick`) and health-gated selection; TCP forwarders (`TCPManager`) bind explicit listen ports; `internal/certs` — CA + leaf issuance; both consume config.Store snapshots.
+- `internal/runner` — managed dev-server supervisor: recipes per framework, process-group kill (`signals_unix.go`/`signals_windows.go`), exponential backoff restarts (1s→30s cap), tee logging (logstream + rotating `~/.dnser/logs/<domain>.log`), free-port allocation. Tests compile `testdata/helper` via `go build` in TestMain.
+- `internal/daemon/runner.go` reconciles config ↔ supervisor on every reload: starts/stops apps, allocates + persists `run.port` on collision, rewrites matching backend strings, records dependency hints in `depsMissing`.
+- Config schema v2: projects carry `path`, `run` (`{command, mode, port}`) and `routes[]` (`{host, backends[], tcp, listen, https, force_https}`); v1 configs auto-migrate on open. Dotted route hosts ending in the settings TLD are absolute, otherwise multi-level relative labels (`deep.sub` → `deep.sub.app.test`).
 - `internal/setup`, `internal/service` — OS-specific files carry build tags: `darwin.go`, `linux.go`, `windows.go`. Never put syscall/OS-specific calls in shared files.
 - `internal/logstream` — ring buffer + broadcast hub for query events; `internal/daemon` wires DNS, proxy, health checks and the API server into one process with fsnotify-driven hot reload.
 - Tests live next to code as `*_test.go`; integration tests bind high ports (>30000) never privileged ports.
