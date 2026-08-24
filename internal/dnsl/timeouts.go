@@ -3,8 +3,14 @@ package dnsl
 import "time"
 
 const (
-	readTimeout    = 2 * time.Second
-	writeTimeout   = 2 * time.Second
-	forwardTimeout = 3 * time.Second
-	probeTimeout   = 2 * time.Second
+	ReadTimeout    = 2 * time.Second
+	WriteTimeout   = 2 * time.Second
+	ForwardTimeout = 3 * time.Second
+	ProbeTimeout   = 2 * time.Second
+	StartTimeout   = 5 * time.Second
+
+	readTimeout    = ReadTimeout
+	writeTimeout   = WriteTimeout
+	forwardTimeout = ForwardTimeout
+	probeTimeout   = ProbeTimeout
 )

@@ -31,6 +31,8 @@ const (
 	HealthNotReady = "Not Ready"
 )
 
+const DefaultClientTimeout = 10 * time.Second
+
 type Client struct {
 	http *http.Client
 	base string
@@ -42,7 +44,7 @@ func NewTCPClient(addr, token string) *Client {
 		addr = "127.0.0.1:" + addr
 	}
 	return &Client{
-		http: &http.Client{Timeout: 10 * time.Second},
+		http: &http.Client{Timeout: DefaultClientTimeout},
 		base: "http://" + addr,
 		tok:  token,
 	}

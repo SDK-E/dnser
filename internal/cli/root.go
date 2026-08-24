@@ -63,6 +63,7 @@ func NewRootCommand() *cobra.Command {
 		lifecycleControlCmd("restart", 2),
 		NewStatusCommand(), NewLogsCommand(), NewExplainCommand(),
 		NewDoctorCommand(), NewUpdateCommand(), NewMigrateCommand(), NewUninstallCommand(),
+		NewDashboardCommand(),
 	} {
 		if c.RunE != nil {
 			inner := c.RunE

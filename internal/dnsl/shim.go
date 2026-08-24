@@ -97,7 +97,7 @@ func (s *Shim) Start(preferred int) error {
 }
 
 func awaitReady(ready func() bool, errCh chan error, what string) bool {
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(StartTimeout)
 	for time.Now().Before(deadline) {
 		select {
 		case err := <-errCh:

@@ -18,9 +18,11 @@ type Manager struct {
 	wakeWait   time.Duration
 }
 
+const DefaultWakeWait = 30 * time.Second
+
 func NewManager(super *Client, idle *IdleTracker, wakeWait time.Duration) *Manager {
 	if wakeWait <= 0 {
-		wakeWait = 30 * time.Second
+		wakeWait = DefaultWakeWait
 	}
 	return &Manager{
 		lifecycles: map[string]*Lifecycle{},

@@ -44,6 +44,7 @@ Re-running reports "already applied" when the system matches the plan.`,
 				return ErrUsage
 			}
 			plan, err := helper.BuildPlan(helper.PlanRequest{
+				RootDir:      string(filepath.Separator),
 				ListenerPort: port,
 				Suffixes:     suffixes,
 			})
