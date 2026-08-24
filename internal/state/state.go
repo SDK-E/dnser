@@ -21,8 +21,9 @@ type Store struct {
 }
 
 type Data struct {
-	Version  int                      `json:"version"`
-	Projects map[string]*ProjectState `json:"projects"`
+	Version  int                       `json:"version"`
+	Projects map[string]*ProjectState  `json:"projects"`
+	Linked   map[string]*LinkedProject `json:"linked,omitempty"`
 }
 
 const currentVersion = 1
