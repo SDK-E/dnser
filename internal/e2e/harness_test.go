@@ -105,7 +105,16 @@ func writeConfig(t *testing.T, home string, ports freePorts, upstreamPort int, p
 
 func startDaemon(t *testing.T, projects ...config.Project) *daemon {
 	t.Helper()
-	home := t.TempDir()
+	return spawnDaemon(t, t.TempDir(), nil, projects...)
+}
+
+func startDaemonWithEnv(t *testing.T, mutate func(base []string) []string, home string, projects ...config.Project) *daemon {
+	t.Helper()
+	return spawnDaemon(t, home, mutate, projects...)
+}
+
+func spawnDaemon(t *testing.T, home string, mutateEnv func(base []string) []string, projects ...config.Project) *daemon {
+	t.Helper()
 	ports := reservePorts(t)
 
 	upstreamAddr := startFakeUpstream(t, ports.Upstream)
@@ -127,7 +136,11 @@ func startDaemon(t *testing.T, projects ...config.Project) *daemon {
 	}
 
 	cmd := exec.Command(binPath, "start", "--foreground")
-	cmd.Env = append(os.Environ(), "DNSER_HOME="+home)
+	env := append(os.Environ(), "DNSER_HOME="+home)
+	if mutateEnv != nil {
+		env = mutateEnv(env)
+	}
+	cmd.Env = env
 	cmd.Stdout = logF
 	cmd.Stderr = logF
 	if err := cmd.Start(); err != nil {
