@@ -4,26 +4,33 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 type Lock struct {
 	file *os.File
 }
 
-func AcquireLock() (*Lock, error) {
+func lockFilePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("resolve home: %w", err)
+		return "", fmt.Errorf("resolve home: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".dnser"), 0o700); err != nil {
+	return filepath.Join(home, ".dnser", "dnser.lock"), nil
+}
+
+func AcquireLock() (*Lock, error) {
+	path, err := lockFilePath()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create ~/.dnser: %w", err)
 	}
-	f, err := os.OpenFile(filepath.Join(home, ".dnser", "dnser.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := openLockFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("open lock: %w", err)
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := flockExclusive(f); err != nil {
 		_ = f.Close()
 		return nil, ErrLocked
 	}
@@ -34,7 +41,7 @@ func (l *Lock) Release() {
 	if l == nil || l.file == nil {
 		return
 	}
-	_ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
+	flockRelease(l.file)
 	_ = l.file.Close()
 	l.file = nil
 }
