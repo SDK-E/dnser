@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -110,36 +111,41 @@ func TestChaosRandomizedKillsPreserveInvariants(t *testing.T) {
 				t.Fatalf("journal state neither applied nor resumable: %+v", p.Steps)
 			}
 
-			recovered, ferr := journal.Finish(context.Background(), store, p, journal.NewFSRegistry())
-			if ferr != nil || p.Status != journal.StatusApplied {
-				t.Fatalf("finish did not converge: err=%v status=%s reports=%v", ferr, p.Status, recovered)
+			back0, lerr := store.Load(p.ID)
+			if lerr != nil {
+				t.Fatal(lerr)
 			}
-			final, _ := os.ReadFile(target)
-			if string(final) != "nameserver 127.0.0.1\nport 35353\n" {
-				t.Fatalf("converged plan must leave the new content: %d bytes", len(final))
-			}
-
-			back, _ := store.Load(p.ID)
-			if _, rerr2 := journal.Revert(context.Background(), store, back, journal.NewFSRegistry()); rerr2 != nil {
-				t.Fatalf("revert after convergence: %v", rerr2)
+			if _, rerr2 := journal.Revert(context.Background(), store, back0, journal.NewFSRegistry()); rerr2 != nil {
+				t.Fatalf("revert after crash: %v", rerr2)
 			}
 			restored, _ := os.ReadFile(target)
 			if string(restored) != oldContent {
 				t.Fatalf("revert must restore pre-state byte-for-byte (I2): got %d bytes want %d", len(restored), len(oldContent))
+			}
+
+			recovered, ferr := journal.Finish(context.Background(), store, back0, journal.NewFSRegistry())
+			_ = recovered
+			if ferr != nil || back0.Status != journal.StatusApplied {
+				t.Fatalf("finish did not converge: err=%v status=%s", ferr, back0.Status)
+			}
+			final, _ := os.ReadFile(target)
+			if string(final) != "nameserver 127.0.0.1\nport 35353\n" {
+				t.Fatalf("converged plan must leave the new content: %d bytes", len(final))
 			}
 		})
 	}
 }
 
 func TestUpdateChecksumVerification(t *testing.T) {
+	assetName := fmt.Sprintf("dnser_%s_%s", runtime.GOOS, runtime.GOARCH)
 	payload := "#!/bin/sh\necho new-binary-v2\n"
 	sum := sha256.Sum256([]byte(payload))
-	checksums := hex.EncodeToString(sum[:]) + "  dnser_darwin_arm64\n"
+	checksums := hex.EncodeToString(sum[:]) + "  " + assetName + "\n"
 
 	fake := &stubFetcher{
 		responses: map[string][]byte{
-			"https://fake/releases/latest/download/checksums.txt":      []byte(checksums),
-			"https://fake/releases/latest/download/dnser_darwin_arm64": []byte(payload),
+			"https://fake/releases/latest/download/checksums.txt": []byte(checksums),
+			"https://fake/releases/latest/download/" + assetName:  []byte(payload),
 		},
 	}
 	result, err := RunUpdate(context.Background(), "/tmp/dnser-self", "https://fake/releases/latest/download", false, fake)
@@ -151,8 +157,8 @@ func TestUpdateChecksumVerification(t *testing.T) {
 	}
 
 	bad := &stubFetcher{responses: map[string][]byte{
-		"https://bad/releases/latest/download/checksums.txt":      []byte("deadbeef  dnser_darwin_arm64\n"),
-		"https://bad/releases/latest/download/dnser_darwin_arm64": []byte(payload),
+		"https://bad/releases/latest/download/checksums.txt": []byte("deadbeef  " + assetName + "\n"),
+		"https://bad/releases/latest/download/" + assetName:  []byte(payload),
 	}}
 	if _, err := RunUpdate(context.Background(), "/tmp/x", "https://bad/releases/latest/download", false, bad); err == nil {
 		t.Fatal("checksum mismatch must refuse install")
@@ -161,8 +167,8 @@ func TestUpdateChecksumVerification(t *testing.T) {
 	}
 
 	noEntry := &stubFetcher{responses: map[string][]byte{
-		"https://none/releases/latest/download/checksums.txt":      []byte("abc123  other-file\n"),
-		"https://none/releases/latest/download/dnser_darwin_arm64": []byte(payload),
+		"https://none/releases/latest/download/checksums.txt": []byte("abc123  other-file\n"),
+		"https://none/releases/latest/download/" + assetName:  []byte(payload),
 	}}
 	if _, err := RunUpdate(context.Background(), "/tmp/x", "https://none/releases/latest/download", false, noEntry); err == nil {
 		t.Fatal("missing checksum entry must refuse (R10)")
