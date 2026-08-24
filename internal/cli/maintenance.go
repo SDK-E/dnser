@@ -12,6 +12,7 @@ import (
 	"github.com/SDK-E/dnser/internal/helper"
 	"github.com/SDK-E/dnser/internal/journal"
 	"github.com/SDK-E/dnser/internal/orchestrator"
+	"github.com/SDK-E/dnser/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -99,78 +100,9 @@ without --fix.`,
 			o := OutputOf(cmd)
 			ctx := cmd.Context()
 			st := mustState()
-			issues := []Issue{}
-
-			var expected []dnsl.Entry
-			for _, lp := range st.ListLinked() {
-				expected = append(expected, dnsl.Entry{Suffix: rootSuffixOfDomain(lp.Domain), Addr: fmt.Sprintf("127.0.0.1:%d", dnsPortFor(st))})
-			}
-			w := dnsl.ResolverWriter{Dir: filepath.Join(string(filepath.Separator), "etc", "resolver")}
-			if len(expected) > 0 {
-				drifted, verr := w.Verify(expected)
-				if verr == nil {
-					for _, d := range drifted {
-						kind := "resolver_drift"
-						fixCmd := "dnser journal revert <plan>  ||  dnser unelevate"
-						if len(d) > 9 && d[len(d)-9:] == " (missing)" {
-							kind = "dead_resolver"
-							fixCmd = "dnser unelevate"
-						}
-						issues = append(issues, Issue{Kind: kind, Evidence: "/etc/resolver: " + d, Fix: fixCmd})
-					}
-				}
-			}
-
-			store, jerr := openUserStore()
-			if jerr == nil {
-				plans, lerr := store.List()
-				if lerr == nil {
-					for _, p := range plans {
-						if journal.HasInterrupted(p) {
-							fix := fmt.Sprintf("dnser journal finish %s  ||  dnser journal revert %s", p.ID, p.ID)
-							issues = append(issues, Issue{Kind: "interrupted_plan", Evidence: "journal plan " + p.ID + " is mid-flight (" + string(p.Status) + ")", Fix: fix})
-							if cmd.Flags().Changed("fix") && p.Intent == "elevate" {
-								_, _ = journal.Finish(ctx, store, p, helperRegistryForDoctor())
-							}
-						}
-					}
-				}
-			}
-
+			fixFlag, _ := cmd.Flags().GetBool("fix")
 			superReachable := fileExists(supervisorSocketPath())
-			if superReachable {
-				super := orchestrator.NewUDSClient(supervisorSocketPath(), "")
-				records := []orchestrator.StrayRecord{}
-				for _, lp := range st.ListLinked() {
-					pid := 0
-					if ps, gerr := super.GetProcess(ctx, lp.Name); gerr == nil {
-						pid = ps.Pid
-					}
-					records = append(records, orchestrator.StrayRecord{Project: lp.Name, Port: lp.Port, Pid: pid})
-				}
-				res := orchestrator.SweepStrays(records, orchestrator.NewDialProber(0), func(int) bool { return true })
-				for _, r := range res {
-					if r.PortInUse && r.RegistryPid == 0 {
-						issues = append(issues, Issue{Kind: "stray_listener", Evidence: fmt.Sprintf("127.0.0.1:%d is occupied by an unknown process", r.Port), Fix: "identify with: lsof -i :" + fmt.Sprint(r.Port)})
-					}
-				}
-			}
-
-			for _, lp := range st.ListLinked() {
-				for _, warn := range dnsl.PublicSuffixWarnings([]string{lp.Domain}) {
-					issues = append(issues, Issue{Kind: "shadowed_suffix", Evidence: warn, Fix: "choose a non-public suffix or accept the warning"})
-				}
-			}
-
-			if superReachable && len(expected) > 0 {
-				if missing := countMissingResolverFiles(expected); missing > 0 {
-					issues = append(issues, Issue{
-						Kind:     "fallback_dns",
-						Evidence: fmt.Sprintf("%d of %d resolver entries absent; projects only reachable on localhost ports", missing, len(expected)),
-						Fix:      "dnser elevate",
-					})
-				}
-			}
+			issues := collectDoctorIssues(ctx, st, superReachable, fixFlag)
 
 			if o.Format == FormatText {
 				if len(issues) == 0 {
@@ -190,6 +122,81 @@ without --fix.`,
 	}
 	cmd.Flags().BoolVar(&fix, "fix", false, "apply the safe subset of fixes")
 	return cmd
+}
+
+func collectDoctorIssues(ctx context.Context, st *state.Store, superReachable, fix bool) []Issue {
+	issues := []Issue{}
+
+	var expected []dnsl.Entry
+	for _, lp := range st.ListLinked() {
+		expected = append(expected, dnsl.Entry{Suffix: rootSuffixOfDomain(lp.Domain), Addr: fmt.Sprintf("127.0.0.1:%d", dnsPortFor(st))})
+	}
+	w := dnsl.ResolverWriter{Dir: filepath.Join(string(filepath.Separator), "etc", "resolver")}
+	if len(expected) > 0 {
+		drifted, verr := w.Verify(expected)
+		if verr == nil {
+			for _, d := range drifted {
+				kind := "resolver_drift"
+				fixCmd := "dnser journal revert <plan>  ||  dnser unelevate"
+				if strings.HasSuffix(d, " (missing)") {
+					kind = "dead_resolver"
+					fixCmd = "dnser unelevate"
+				}
+				issues = append(issues, Issue{Kind: kind, Evidence: "/etc/resolver: " + d, Fix: fixCmd})
+			}
+		}
+	}
+
+	store, jerr := openUserStore()
+	if jerr == nil {
+		plans, lerr := store.List()
+		if lerr == nil {
+			for _, p := range plans {
+				if journal.HasInterrupted(p) {
+					hint := fmt.Sprintf("dnser journal finish %s  ||  dnser journal revert %s", p.ID, p.ID)
+					issues = append(issues, Issue{Kind: "interrupted_plan", Evidence: "journal plan " + p.ID + " is mid-flight (" + string(p.Status) + ")", Fix: hint})
+					if fix && p.Intent == "elevate" {
+						_, _ = journal.Finish(ctx, store, p, helperRegistryForDoctor())
+					}
+				}
+			}
+		}
+	}
+
+	if superReachable {
+		super := orchestrator.NewUDSClient(supervisorSocketPath(), "")
+		records := []orchestrator.StrayRecord{}
+		for _, lp := range st.ListLinked() {
+			pid := 0
+			if ps, gerr := super.GetProcess(ctx, lp.Name); gerr == nil {
+				pid = ps.Pid
+			}
+			records = append(records, orchestrator.StrayRecord{Project: lp.Name, Port: lp.Port, Pid: pid})
+		}
+		res := orchestrator.SweepStrays(records, orchestrator.NewDialProber(0), func(int) bool { return true })
+		for _, r := range res {
+			if r.PortInUse && r.RegistryPid == 0 {
+				issues = append(issues, Issue{Kind: "stray_listener", Evidence: fmt.Sprintf("127.0.0.1:%d is occupied by an unknown process", r.Port), Fix: "identify with: lsof -i :" + fmt.Sprint(r.Port)})
+			}
+		}
+	}
+
+	for _, lp := range st.ListLinked() {
+		for _, warn := range dnsl.PublicSuffixWarnings([]string{lp.Domain}) {
+			issues = append(issues, Issue{Kind: "shadowed_suffix", Evidence: warn, Fix: "choose a non-public suffix or accept the warning"})
+		}
+	}
+
+	if superReachable && len(expected) > 0 {
+		if missing := countMissingResolverFiles(expected); missing > 0 {
+			issues = append(issues, Issue{
+				Kind:     "fallback_dns",
+				Evidence: fmt.Sprintf("%d of %d resolver entries absent; projects only reachable on localhost ports", missing, len(expected)),
+				Fix:      "dnser elevate",
+			})
+		}
+	}
+	return issues
 }
 
 func helperRegistryForDoctor() journal.Registry {

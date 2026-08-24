@@ -39,3 +39,23 @@ jobs:
             echo "Regenerate locally: go run ./cmd/dnser schema > internal/config/schema/dnser.manifest.schema.json"
             exit 1
           fi
+
+  dashboard-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: build dashboard and diff committed dist
+        run: |
+          set -euo pipefail
+          cd internal/dashboard/webapp
+          npm ci --no-fund --no-audit
+          npm run build
+          cd "$GITHUB_WORKSPACE"
+          if ! git diff --exit-code -- internal/dashboard/webapp/dist; then
+            echo "::error::Committed dist drifted from sources"
+            echo "Rebuild locally: (cd internal/dashboard/webapp && npm run build)"
+            exit 1
+          fi
