@@ -1,24 +1,38 @@
 import { AppShell, Tabs, Title, Text, Group } from '@mantine/core'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ProjectsView from './views/ProjectsView'
 import LogsView from './views/LogsView'
 import DoctorView from './views/DoctorView'
 import SettingsView from './views/SettingsView'
+import { brand } from './theme'
+
+function Wordmark() {
+  const [logoOk, setLogoOk] = useState(false)
+  useEffect(() => {
+    const img = new Image()
+    img.onload = () => setLogoOk(true)
+    img.src = '/brand/dnser-logo-dark.png'
+  }, [])
+  if (logoOk) {
+    return <img src="/brand/dnser-logo-dark.png" alt="DNS.er" height={30} />
+  }
+  return (
+    <Title order={3} c={brand.lettersOnDark} fw={700} lh={1}>
+      DNS<span style={{ color: brand.accent }}>.</span>er
+      <Text span size="xs" c="dimmed" ml="sm">
+        local infrastructure
+      </Text>
+    </Title>
+  )
+}
 
 export default function App() {
   const [tab, setTab] = useState<string>('projects')
   return (
     <AppShell header={{ height: 64 }} padding="lg">
-      <AppShell.Header bg="dark.9">
+      <AppShell.Header bg={brand.backgroundDark}>
         <Group h="100%" px="xl" justify="space-between">
-          <Group gap="sm">
-            <Title order={3} c="moss.5" ff="-apple-system, BlinkMacSystemFont, sans-serif" fw={700}>
-              DNS.er
-            </Title>
-            <Text size="sm" c="dimmed">
-              local infrastructure
-            </Text>
-          </Group>
+          <Wordmark />
         </Group>
       </AppShell.Header>
       <AppShell.Main>

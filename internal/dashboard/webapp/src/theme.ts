@@ -26,6 +26,12 @@ const surface: MantineColorsTuple = [
   '#14590f',
 ]
 
+export const brand = {
+  backgroundDark: '#082003',
+  lettersOnDark: '#d7e8d3',
+  accent: '#2cdb16',
+} as const
+
 export const theme = createTheme({
   primaryColor: 'moss',
   primaryShade: 5,
