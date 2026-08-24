@@ -3,6 +3,7 @@ package runner
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -38,16 +39,18 @@ type Supervisor struct {
 	apps  map[string]*managedApp
 	logs  *logTee
 	clock func() time.Time
+	paths *PathResolver
 }
 
 type managedApp struct {
-	domain    string
-	dir       string
-	framework string
-	port      int
-	command   []string
-	useShell  bool
-	portEnv   bool
+	domain     string
+	dir        string
+	framework  string
+	port       int
+	command    []string
+	useShell   bool
+	portEnv    bool
+	namedPorts map[string]int
 
 	proc      *os.Process
 	procMu    sync.Mutex
@@ -65,9 +68,12 @@ type managedApp struct {
 }
 
 type Options struct {
-	LogsDir string
-	Stream  *logstream.Stream
-	Clock   func() time.Time
+	LogsDir     string
+	Stream      *logstream.Stream
+	Clock       func() time.Time
+	UserHome    string
+	DnserHome   string
+	PathRefresh time.Duration
 }
 
 func NewSupervisor(opts Options) *Supervisor {
@@ -78,7 +84,19 @@ func NewSupervisor(opts Options) *Supervisor {
 		apps:  make(map[string]*managedApp),
 		logs:  newLogTee(opts.LogsDir, opts.Stream),
 		clock: opts.Clock,
+		paths: NewPathResolver(pathOptionsFor(opts)),
 	}
+}
+
+func pathOptionsFor(opts Options) PathOptions {
+	po := PathOptions{UserHome: opts.UserHome, TTL: opts.PathRefresh, Clock: opts.Clock}
+	switch {
+	case opts.DnserHome != "":
+		po.DnserHome = opts.DnserHome
+	case opts.LogsDir != "":
+		po.DnserHome = filepath.Dir(filepath.Clean(opts.LogsDir))
+	}
+	return po
 }
 
 func (s *Supervisor) Info() map[string]AppInfo {
@@ -142,17 +160,18 @@ func (s *Supervisor) Start(spec Spec) error {
 		delete(s.apps, spec.Domain)
 	}
 	app := &managedApp{
-		domain:    spec.Domain,
-		dir:       spec.Dir,
-		framework: spec.Framework,
-		port:      spec.Port,
-		command:   spec.Command,
-		useShell:  spec.UseShell,
-		portEnv:   spec.PortEnv,
-		state:     StateStarting,
-		done:      make(chan struct{}),
-		stopCh:    make(chan struct{}),
-		env:       spec.Env,
+		domain:     spec.Domain,
+		dir:        spec.Dir,
+		framework:  spec.Framework,
+		port:       spec.Port,
+		command:    spec.Command,
+		useShell:   spec.UseShell,
+		portEnv:    spec.PortEnv,
+		namedPorts: spec.NamedPorts,
+		state:      StateStarting,
+		done:       make(chan struct{}),
+		stopCh:     make(chan struct{}),
+		env:        spec.Env,
 	}
 	s.apps[app.domain] = app
 	go s.supervise(app)
@@ -184,13 +203,14 @@ func (s *Supervisor) Restart(domain string) error {
 		return fmt.Errorf("project %q is not managed", domain)
 	}
 	spec := Spec{
-		Domain:    app.domain,
-		Dir:       app.dir,
-		Framework: app.framework,
-		Port:      app.port,
-		Command:   app.command,
-		UseShell:  app.useShell,
-		PortEnv:   app.portEnv,
+		Domain:     app.domain,
+		Dir:        app.dir,
+		Framework:  app.framework,
+		Port:       app.port,
+		Command:    app.command,
+		UseShell:   app.useShell,
+		PortEnv:    app.portEnv,
+		NamedPorts: app.namedPorts,
 	}
 	return s.Start(spec)
 }
@@ -223,4 +243,11 @@ func (s *Supervisor) snapshotApps() []*managedApp {
 		out = append(out, a)
 	}
 	return out
+}
+
+func (s *Supervisor) EffectivePATHDirs() []string {
+	if s.paths == nil {
+		return nil
+	}
+	return append([]string(nil), s.paths.Dirs()...)
 }

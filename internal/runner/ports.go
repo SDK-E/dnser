@@ -3,11 +3,8 @@ package runner
 import (
 	"fmt"
 	"net"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 )
 
 func AllocateFreePort(exclude map[int]bool) (int, error) {
@@ -45,6 +42,8 @@ func allocateAny() (int, error) {
 
 var placeholderRe = regexp.MustCompile(`\{port\}`)
 
+var namedPortRe = regexp.MustCompile(`\{port:([A-Za-z0-9_-]+)\}`)
+
 func SubstitutePort(argv []string, port int) []string {
 	out := make([]string, len(argv))
 	p := strconv.Itoa(port)
@@ -54,42 +53,33 @@ func SubstitutePort(argv []string, port int) []string {
 	return out
 }
 
-const dotDnserFile = ".dnser.yaml"
-
-type LinkOverride struct {
-	Command string
+func SubstitutePortMap(argv []string, port int, named map[string]int) []string {
+	if len(named) == 0 {
+		return SubstitutePort(argv, port)
+	}
+	out := make([]string, len(argv))
+	p := strconv.Itoa(port)
+	for i, a := range argv {
+		a = placeholderRe.ReplaceAllString(a, p)
+		a = namedPortRe.ReplaceAllStringFunc(a, func(m string) string {
+			name := namedPortRe.FindStringSubmatch(m)[1]
+			if v, ok := named[name]; ok && v > 0 {
+				return strconv.Itoa(v)
+			}
+			return m
+		})
+		out[i] = a
+	}
+	return out
 }
 
-func ReadLinkOverride(dir string) (LinkOverride, bool) {
-	data, err := os.ReadFile(filepath.Join(dir, dotDnserFile))
-	if err != nil {
-		return LinkOverride{}, false
+func SubstituteBackendStrings(backends []string, named map[string]int) []string {
+	if len(named) == 0 {
+		return backends
 	}
-	var cmd LinkOverride
-	inCommand := false
-	for _, rawLine := range strings.Split(string(data), "\n") {
-		line := strings.TrimRight(rawLine, "\r")
-		if strings.HasPrefix(line, "command:") && !strings.Contains(line[:7], "#") {
-			value := strings.TrimSpace(strings.TrimPrefix(line, "command:"))
-			value = strings.Trim(value, `"'`)
-			if value != "" && !strings.HasPrefix(value, "#") {
-				cmd.Command = value
-				return cmd, true
-			}
-			inCommand = true
-			continue
-		}
-		if inCommand {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-				continue
-			}
-			if line[0] == ' ' || line[0] == '\t' || line[0] == '-' {
-				cmd.Command = strings.Trim(trimmed, `"'`)
-				return cmd, true
-			}
-			inCommand = false
-		}
+	out := make([]string, len(backends))
+	for i, b := range backends {
+		out[i] = SubstitutePortMap([]string{b}, named[""], named)[0]
 	}
-	return LinkOverride{}, false
+	return out
 }
