@@ -18,6 +18,10 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd.AddCommand(NewInitCommand())
 	cmd.AddCommand(NewSchemaCommand())
+	cmd.AddCommand(NewElevateCommand())
+	cmd.AddCommand(NewUnelevateCommand())
+	cmd.AddCommand(NewJournalCommand())
+	cmd.AddCommand(NewHelperCommand())
 	return cmd
 }
 

@@ -1,0 +1,13 @@
+[Unit]
+Description=DNS.er local development infrastructure daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart={bin_path} daemon
+Restart=on-failure
+RestartSec=2
+WorkingDirectory={state_dir}
+
+[Install]
+WantedBy=default.target
