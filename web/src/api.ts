@@ -1,5 +1,8 @@
 export interface Ports { dns: number; http: number; https: number; ui: number }
-export interface Settings { tld: string; bind: string; upstreams: string[]; ports: Ports }
+export interface Settings {
+  tld: string; bind: string; upstreams: string[]; autostart?: boolean; ports: Ports;
+  force_https?: boolean; path_refresh_minutes?: number;
+}
 export interface Status {
   version: string; tld: string; bind: string; dns_port: number;
   ports: Ports; upstreams: string[]; dashboard_url: string; projects: number;
@@ -9,8 +12,12 @@ export interface Record {
   ttl?: number; priority?: number; weight?: number; port?: number;
 }
 export interface Route {
-  host: string; backends: string[]; tcp?: boolean; listen?: number;
-  https?: boolean; force_https?: boolean;
+  host: string; backends: string[]; tcp?: boolean; udp?: boolean; listen?: number;
+  https?: boolean; force_https?: boolean; paths?: string[];
+}
+export interface Service {
+  name: string; type?: string; command?: string; host?: string;
+  port?: number; transport?: "" | "tcp" | "udp"; dns?: boolean;
 }
 export interface RunConfig { command?: string; mode?: string; port?: number }
 export interface BackendHealth {
@@ -22,7 +29,7 @@ export interface DnsRecord {
   ttl?: number; priority?: number; weight?: number; port?: number;
 }
 export type Project = {
-  domain: string; path?: string; run?: RunConfig;
+  domain: string; path?: string; run?: RunConfig; services?: Service[];
   routes?: Route[]; records?: DnsRecord[]; created_at?: string;
   backend_health?: BackendHealth[];
 };
@@ -99,19 +106,29 @@ export const api = {
     domain: string,
     patch: Partial<{
       routes: Route[];
+      services: Service[];
       path: string;
       run: RunConfig | null;
     }>,
   ) => req<Project>(`/api/v1/projects/${domain}`, { method: "PUT", body: JSON.stringify(patch) }),
+  settings: () => req<Settings>("/api/v1/settings"),
+  updateSettings: (patch: Partial<{
+    force_https: boolean;
+    path_refresh_minutes: number;
+    autostart: boolean;
+    bind: string;
+    upstreams: string[];
+    ports: Partial<Ports>;
+  }>) => req<Settings>("/api/v1/settings", { method: "PUT", body: JSON.stringify(patch) }),
   deleteProject: (domain: string) =>
     req(`/api/v1/projects/${domain}`, { method: "DELETE" }),
   addRecord: (domain: string, r: Record) =>
     req(`/api/v1/projects/${domain}/records`, { method: "POST", body: JSON.stringify(r) }),
   removeRecord: (domain: string, r: Pick<Record, "name" | "type">) =>
     req(`/api/v1/projects/${domain}/records`, { method: "DELETE", body: JSON.stringify(r) }),
-  restartApp: (domain: string) => req<AppInfo>(`/api/v1/runner/${domain}/restart`, { method: "POST" }),
-  stopApp: (domain: string) => req<AppInfo>(`/api/v1/runner/${domain}/stop`, { method: "POST" }),
-  startApp: (domain: string) => req<AppInfo>(`/api/v1/runner/${domain}/start`, { method: "POST" }),
+  restartApp: (domain: string) => req<AppInfo>(`/api/v1/runner/action/restart/${domain}`, { method: "POST" }),
+  stopApp: (domain: string) => req<AppInfo>(`/api/v1/runner/action/stop/${domain}`, { method: "POST" }),
+  startApp: (domain: string) => req<AppInfo>(`/api/v1/runner/action/start/${domain}`, { method: "POST" }),
 };
 
 export function projectURLs(p: Project, tld: string): string[] {

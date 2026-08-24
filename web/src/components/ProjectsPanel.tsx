@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AppInfo, type BackendHealth, type DotState, type Project, type Route } from "../api";
+import { api, type AppInfo, type BackendHealth, type DotState, type Project, type Route, type Service } from "../api";
 import {
   Badge, Button, Card, EmptyState, Input, Modal, Select, StatusDot,
   Tabs, useToast,
@@ -50,6 +50,7 @@ export function ProjectsPanel({
         <ProjectDetail
           project={projects.find((p) => p.domain === selected)!}
           app={apps[selected]}
+          apps={apps}
           tld={tld}
           onClose={() => setSelected(null)}
           onChanged={onChanged}
@@ -104,11 +105,12 @@ const stateToneMap: Record<string, "green" | "red" | "amber" | "info" | "default
   stopped: "default", failed: "info", "deps-missing": "info", unknown: "default",
 };
 
-function ProjectDetail({ project, app, tld, onClose, onChanged }: {
-  project: Project; app?: AppInfo; tld: string; onClose: () => void; onChanged: () => void;
+function ProjectDetail({ project, app, apps, tld, onClose, onChanged }: {
+  project: Project; app?: AppInfo; apps: Record<string, AppInfo>; tld: string;
+  onClose: () => void; onChanged: () => void;
 }) {
   const toast = useToast();
-  const [tab, setTab] = useState<"routes" | "records" | "runner">("routes");
+  const [tab, setTab] = useState<"routes" | "services" | "records" | "runner">("routes");
   const [busy, setBusy] = useState(false);
 
   const act = useCallback(async (fn: () => Promise<unknown>, okMsg: string) => {
@@ -141,6 +143,7 @@ function ProjectDetail({ project, app, tld, onClose, onChanged }: {
       <Tabs
         tabs={[
           { id: "routes", label: `Routes (${project.routes?.length ?? 0})` },
+          { id: "services", label: `Services (${project.services?.length ?? 0})` },
           { id: "records", label: `Records (${project.records?.length ?? 0})` },
           ...(project.path ? [{ id: "runner" as const, label: "App" }] : []),
         ]}
@@ -148,62 +151,283 @@ function ProjectDetail({ project, app, tld, onClose, onChanged }: {
         onChange={(id) => setTab(id as typeof tab)}
       />
       <div className="mt-4 max-h-[50vh] overflow-y-auto pr-1">
-        {tab === "routes" && <RoutesTab project={project} tld={tld} />}
+        {tab === "routes" && (
+          <RoutesTab project={project} tld={tld} onChanged={onChanged} act={act} busy={busy} />
+        )}
+        {tab === "services" && <ServicesTab project={project} onChanged={onChanged} act={act} busy={busy} />}
         {tab === "records" && <RecordsTab project={project} onChanged={onChanged} act={act} busy={busy} />}
         {tab === "runner" && app !== undefined && (
-          <RunnerTab app={app} hasRun={!!project.run?.command} act={act} busy={busy} />
+          <RunnerTab
+            project={project}
+            app={app}
+            serviceApps={(project.services ?? [])
+              .filter((s) => s.command)
+              .map((s) => apps[`${project.domain}/${s.name}`])
+              .filter((a): a is AppInfo => !!a)}
+            hasRun={!!project.run?.command || (project.services?.length ?? 0) > 0}
+            act={act}
+            busy={busy}
+          />
         )}
       </div>
     </Modal>
   );
 }
 
-function RoutesTab({ project, tld }: { project: Project; tld: string }) {
+type RouteDraft = Route & { backendsText: string; pathsText: string };
+
+function toDraft(r: Route): RouteDraft {
+  return { ...r, backendsText: r.backends.join(", "), pathsText: (r.paths ?? []).join(", ") };
+}
+
+function fromDraft(d: RouteDraft): Route | null {
+  const backends = d.backendsText.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!d.host.trim() || backends.length === 0) return null;
+  const route: Route = {
+    host: d.host.trim() || "@",
+    backends,
+    tcp: d.tcp, udp: d.udp, listen: d.listen,
+    https: d.https, force_https: d.force_https,
+  };
+  const paths = d.pathsText.split(",").map((s) => s.trim()).filter(Boolean);
+  if (paths.length > 0 && !route.tcp && !route.udp) route.paths = paths;
+  return route;
+}
+
+function RoutesTab({ project, tld, onChanged, act, busy }: {
+  project: Project;
+  tld: string;
+  onChanged: () => void;
+  act: (fn: () => Promise<unknown>, msg: string) => Promise<void>;
+  busy: boolean;
+}) {
   const routes = project.routes ?? [];
-  const healthByBackend = new Map<string, BackendHealth>();
-  for (const h of project.backend_health ?? []) healthByBackend.set(h.backend + "|" + h.host, h);
-  if (routes.length === 0) return <EmptyState title="No routes" hint="This project only has DNS records." />;
+  const [drafts, setDrafts] = useState<RouteDraft[]>(routes.map(toDraft));
+  useEffect(() => {
+    setDrafts(routes.map(toDraft));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.routes?.length, project.domain]);
+
+  const patch = (i: number, fields: Partial<RouteDraft>) =>
+    setDrafts((ds) => ds.map((d, j) => (j === i ? { ...d, ...fields } : d)));
+
+  const save = () => {
+    const cleaned = drafts.map(fromDraft).filter((r): r is Route => r !== null);
+    return act(() => api.updateProject(project.domain, { routes: cleaned }), "routes saved").then(onChanged);
+  };
+
   return (
-    <table className="w-full text-left text-xs">
-      <thead className="text-muted">
-        <tr><th className="pb-2 font-medium">hostname</th><th className="pb-2 font-medium">backends</th><th className="pb-2 font-medium">tls</th></tr>
-      </thead>
-      <tbody className="font-mono">
-        {routes.map((r: Route, i) => (
-          <tr key={i} className="border-t border-edge/60 align-top">
-            <td className="py-2 pr-3">
-              {r.tcp ? (
-                <span>: {r.listen}</span>
-              ) : (
-                <a
-                  href={`https://${hostOf(r.host, project.domain, tld)}`}
-                  target="_blank" rel="noreferrer"
-                  className="hover:text-accent hover:underline"
-                >
-                  {hostOf(r.host, project.domain, tld)}
-                </a>
-              )}
-              {r.force_https && <span className="ml-2 text-[10px] text-warn" title="redirects http → https">force</span>}
-            </td>
-            <td className="py-2 pr-3">
-              <div className="flex flex-col gap-1">
-                {r.backends.map((b) => {
-                  const h = healthByBackend.get(b + "|" + r.host);
-                  return (
-                    <span key={b} className="flex items-center gap-2">
-                      <StatusDot up={h?.up} />
-                      <span>{r.tcp ? "tcp" : b}{h && !h.up ? " (down)" : ""}</span>
-                    </span>
-                  );
-                })}
-                {r.backends.length === 0 && <span className="text-muted">—</span>}
+    <div className="flex flex-col gap-3">
+      {drafts.length === 0 ? (
+        <EmptyState title="No routes" hint="Add a route to serve this project on a hostname or port." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {drafts.map((d, i) => {
+            const kind = d.udp ? "udp" : d.tcp ? "tcp" : "http";
+            return (
+              <li key={i} className="rounded-lg border border-edge p-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <Input
+                    value={d.host} onChange={(e) => patch(i, { host: e.target.value })}
+                    placeholder="@ / * / api" className="w-28 font-mono"
+                  />
+                  <Select
+                    value={kind}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      patch(i, { tcp: v === "tcp", udp: v === "udp", https: v === "tcp" || v === "udp" ? false : d.https });
+                    }}
+                    className="w-24"
+                  >
+                    <option value="http">http</option>
+                    <option value="tcp">tcp</option>
+                    <option value="udp">udp</option>
+                  </Select>
+                  {(kind === "tcp" || kind === "udp") && (
+                    <Input
+                      type="number" value={d.listen ?? ""} placeholder="listen port"
+                      onChange={(e) => patch(i, { listen: Number(e.target.value) })} className="w-28"
+                    />
+                  )}
+                  {(kind === "tcp" || kind === "udp") && (
+                    <span className="text-muted">→ 127.0.0.1:{d.listen ?? ""}</span>
+                  )}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <Input
+                    value={d.backendsText}
+                    onChange={(e) => patch(i, { backendsText: e.target.value })}
+                    placeholder="backends — 127.0.0.1:{port}, 10.0.0.5:6379"
+                    className="min-w-56 flex-1 font-mono"
+                  />
+                  {kind === "http" && (
+                    <>
+                      <label className="flex items-center gap-1">
+                        <input type="checkbox" checked={!!d.https} onChange={(e) => patch(i, { https: e.target.checked })} className="accent-accent" />
+                        https
+                      </label>
+                      <label className="flex items-center gap-1" title={d.https ? "redirect http → https" : "requires https"}>
+                        <input type="checkbox" checked={!!d.force_https} disabled={!d.https}
+                          onChange={(e) => patch(i, { force_https: e.target.checked })} className="accent-accent" />
+                        force
+                      </label>
+                      <Input
+                        value={d.pathsText} onChange={(e) => patch(i, { pathsText: e.target.value })}
+                        placeholder="paths — /api, /v2" className="w-40 font-mono"
+                      />
+                      <a href={`https://${hostOf(d.host || "@", project.domain, tld)}`} target="_blank" rel="noreferrer" className="text-muted hover:text-accent">
+                        open ↗
+                      </a>
+                    </>
+                  )}
+                  <Button size="sm" variant="danger"
+                    onClick={() => setDrafts((ds) => ds.filter((_, j) => j !== i))}>
+                    remove
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="flex justify-between">
+        <Button size="sm"
+          onClick={() => setDrafts((ds) => [...ds, toDraft({ host: "@", backends: ["127.0.0.1:{port}"] })])}>
+          + Add route
+        </Button>
+        <Button size="sm" variant="primary" disabled={busy} onClick={() => void save()}>
+          Save routes
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+type ServiceDraft = {
+  name: string; type: string; mode: "managed" | "external";
+  command: string; host: string; port: number | "";
+  transport: "tcp" | "udp"; dns: boolean;
+};
+
+function toSvcDraft(s: Service): ServiceDraft {
+  const managed = !!s.command;
+  return {
+    name: s.name ?? "",
+    type: s.type ?? "",
+    mode: managed ? "managed" : "external",
+    command: s.command ?? "",
+    host: s.host ?? "",
+    port: s.port ?? "",
+    transport: s.transport === "udp" ? "udp" : "tcp",
+    dns: !!s.dns,
+  };
+}
+
+function fromSvcDraft(d: ServiceDraft): Service | null {
+  if (!d.name.trim()) return null;
+  const svc: Service = {
+    name: d.name.trim().toLowerCase(),
+    type: d.type.trim().toLowerCase() || undefined,
+    transport: d.transport,
+    dns: d.dns,
+  };
+  if (d.mode === "managed") {
+    const cmd = d.command.trim();
+    if (!cmd) return null;
+    svc.command = cmd;
+    svc.port = typeof d.port === "number" ? d.port : 0;
+  } else {
+    const host = d.host.trim();
+    if (!host || typeof d.port !== "number" || d.port < 1) return null;
+    svc.host = host;
+    svc.port = d.port;
+  }
+  return svc;
+}
+
+function ServicesTab({ project, onChanged, act, busy }: {
+  project: Project;
+  onChanged: () => void;
+  act: (fn: () => Promise<unknown>, msg: string) => Promise<void>;
+  busy: boolean;
+}) {
+  const services = project.services ?? [];
+  const [drafts, setDrafts] = useState<ServiceDraft[]>(services.map(toSvcDraft));
+  useEffect(() => {
+    setDrafts(services.map(toSvcDraft));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services.length, project.domain]);
+  const patch = (i: number, fields: Partial<ServiceDraft>) =>
+    setDrafts((ds) => ds.map((d, j) => (j === i ? { ...d, ...fields } : d)));
+  const save = () => {
+    const cleaned = drafts.map(fromSvcDraft).filter((s): s is Service => s !== null);
+    return act(() => api.updateProject(project.domain, { services: cleaned }), "services saved").then(onChanged);
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      {drafts.length === 0 ? (
+        <EmptyState
+          title="No services declared"
+          hint="Declare any service — redis, postgres, smtp… managed by dnser or pointed at an external host."
+        />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {drafts.map((d, i) => (
+            <li key={i} className="rounded-lg border border-edge p-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Input value={d.name} onChange={(e) => patch(i, { name: e.target.value })} placeholder="name" className="w-24 font-mono" />
+                <Input value={d.type} onChange={(e) => patch(i, { type: e.target.value })} placeholder="type (redis)" className="w-24 font-mono" />
+                <Select value={d.mode} onChange={(e) => patch(i, { mode: e.target.value as ServiceDraft["mode"] })} className="w-24">
+                  <option value="managed">managed</option>
+                  <option value="external">external</option>
+                </Select>
+                {d.mode === "managed" ? (
+                  <Input
+                    value={d.command}
+                    onChange={(e) => patch(i, { command: e.target.value })}
+                    placeholder='command — redis-server --port {port}'
+                    className="min-w-48 flex-1 font-mono"
+                  />
+                ) : (
+                  <Input
+                    value={d.host}
+                    onChange={(e) => patch(i, { host: e.target.value })}
+                    placeholder="host — db.internal / 10.0.0.5"
+                    className="min-w-48 flex-1 font-mono"
+                  />
+                )}
+                <Input
+                  type="number"
+                  value={d.port}
+                  onChange={(e) => patch(i, { port: e.target.value === "" ? "" : Number(e.target.value) })}
+                  placeholder={d.mode === "managed" ? "auto" : "port"}
+                  className="w-20"
+                />
+                <Select value={d.transport} onChange={(e) => patch(i, { transport: e.target.value as "tcp" | "udp" })} className="w-20">
+                  <option value="tcp">tcp</option>
+                  <option value="udp">udp</option>
+                </Select>
+                <label className="flex items-center gap-1" title="publish name.<domain> in DNS">
+                  <input type="checkbox" checked={d.dns} onChange={(e) => patch(i, { dns: e.target.checked })} className="accent-accent" />
+                  dns
+                </label>
+                <Button size="sm" variant="danger" onClick={() => setDrafts((ds) => ds.filter((_, j) => j !== i))}>
+                  remove
+                </Button>
               </div>
-            </td>
-            <td className="py-2">{r.https ? "✓" : "—"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex justify-between">
+        <Button size="sm" onClick={() => setDrafts((ds) => [...ds, { name: "", type: "", mode: "managed", command: "", host: "", port: "", transport: "tcp", dns: true }])}>
+          + Add service
+        </Button>
+        <Button size="sm" variant="primary" disabled={busy} onClick={() => void save()}>
+          Save services
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -261,14 +485,34 @@ function RecordsTab({ project, onChanged, act, busy }: {
   );
 }
 
-function RunnerTab({ app, hasRun, act, busy }: {
-  app?: AppInfo; hasRun: boolean;
+function RunnerTab({ project, app, serviceApps, hasRun, act, busy }: {
+  project: Project; app?: AppInfo; serviceApps: AppInfo[]; hasRun: boolean;
   act: (fn: () => Promise<unknown>, msg: string) => Promise<void>;
   busy: boolean;
 }) {
-  if (!hasRun) {
+  if (!hasRun && serviceApps.length === 0) {
     return <EmptyState title="Not managed" hint="No dev command configured for this project. Use `dnser link` with --command or a .dnser.yaml file." />;
   }
+  return (
+    <div className="flex flex-col gap-4">
+      {project.run?.command !== undefined && (
+        <AppControls app={app} act={act} busy={busy} />
+      )}
+      {serviceApps.map((sa) => (
+        <div key={sa.domain} className="border-t border-edge/60 pt-3">
+          <p className="mb-2 font-mono text-xs text-muted">{sa.domain}</p>
+          <AppControls app={sa} act={act} busy={busy} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AppControls({ app, act, busy }: {
+  app?: AppInfo;
+  act: (fn: () => Promise<unknown>, msg: string) => Promise<void>;
+  busy: boolean;
+}) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
@@ -287,10 +531,16 @@ function RunnerTab({ app, hasRun, act, busy }: {
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-xs">
         <dt className="text-muted">command</dt><dd>{(app?.command ?? []).join(" ") || "—"}</dd>
+        <dt className="text-muted">state</dt><dd>{app?.state ?? "—"}</dd>
         <dt className="text-muted">pid</dt><dd>{app?.pid ?? "—"}</dd>
         <dt className="text-muted">port</dt><dd>{app?.port ?? "—"}</dd>
         <dt className="text-muted">restarts</dt><dd>{app?.restarts ?? 0}</dd>
       </dl>
+      {app?.last_error && (
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 font-mono text-xs text-red-400">
+          {app.last_error}
+        </p>
+      )}
     </div>
   );
 }

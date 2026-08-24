@@ -5,6 +5,7 @@ import { DoctorModal } from "./components/DoctorModal";
 import { Palette } from "./components/Palette";
 import { LogsPanel } from "./components/LogsPanel";
 import { DesktopPanel } from "./components/DesktopPanel";
+import { SettingsModal } from "./components/SettingsModal";
 import { Button, Kbd } from "./components/ui";
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tourDismissed, setTourDismissed] = useState(
     () => localStorage.getItem("dnser.tour") === "done",
@@ -77,6 +79,7 @@ export default function App() {
             <Kbd>⌘K</Kbd>
           </button>
           <Button size="sm" onClick={() => setDoctorOpen(true)}>Doctor</Button>
+          <Button size="sm" onClick={() => setSettingsOpen(true)}>Settings</Button>
           {status && (
             <div>
               <span className="font-mono text-ink">v{status.version}</span>
@@ -130,6 +133,7 @@ export default function App() {
       </main>
 
       <DoctorModal open={doctorOpen} onClose={() => setDoctorOpen(false)} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <Palette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
