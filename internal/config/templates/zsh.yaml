@@ -1,0 +1,8 @@
+name: zsh
+description: Zsh-script servers
+detect:
+  files:
+    - serve.zsh
+  port_env_keys:
+    - PORT
+command: zsh ./serve.zsh

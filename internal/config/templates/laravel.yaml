@@ -1,0 +1,11 @@
+name: laravel
+description: Laravel PHP applications (artisan serve or Octane)
+detect:
+  files:
+    - composer.json
+    - artisan
+  default_port: 8000
+command: php artisan serve --host {domain} --port {port}
+env:
+  PHP_CLI_SERVER_WORKERS: "4"
+  APP_ENV: local

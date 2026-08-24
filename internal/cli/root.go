@@ -17,6 +17,7 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 	}
 	cmd.AddCommand(NewInitCommand())
+	cmd.AddCommand(NewSchemaCommand())
 	return cmd
 }
 

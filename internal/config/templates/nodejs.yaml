@@ -1,0 +1,11 @@
+name: nodejs
+description: Node.js / npm / pnpm / yarn JavaScript projects
+detect:
+  files:
+    - package.json
+  port_env_keys:
+    - PORT
+  default_port: 3000
+command: npm run dev -- --port {port}
+env:
+  NODE_OPTIONS: --max-old-space-size=4096

@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main, v2]
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build
+        run: go build ./...
+      - name: test
+        run: go test ./...
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  schema-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: regenerate schemas and diff against committed
+        run: |
+          set -euo pipefail
+          go run ./cmd/dnser schema > /tmp/dnser.manifest.schema.json
+          if ! diff -u internal/config/schema/dnser.manifest.schema.json /tmp/dnser.manifest.schema.json; then
+            echo "::error::Generated schema drifted from internal/config/schema/dnser.manifest.schema.json"
+            echo "Regenerate locally: go run ./cmd/dnser schema > internal/config/schema/dnser.manifest.schema.json"
+            exit 1
+          fi

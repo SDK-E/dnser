@@ -1,0 +1,11 @@
+name: python
+description: Python web apps (uvicorn, flask, django, fastapi)
+detect:
+  files:
+    - pyproject.toml
+    - requirements.txt
+    - manage.py
+  port_env_keys:
+    - PORT
+  default_port: 8000
+command: python manage.py runserver {port}

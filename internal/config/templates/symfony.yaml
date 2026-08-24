@@ -1,0 +1,12 @@
+name: symfony
+description: Symfony PHP applications (symfony console server or PHP built-in)
+detect:
+  files:
+    - composer.json
+    - symfony.lock
+    - bin/console
+  default_port: 8000
+command: php -S {domain}:{port} public/index.php
+env:
+  PHP_CLI_SERVER_WORKERS: "4"
+  APP_ENV: dev

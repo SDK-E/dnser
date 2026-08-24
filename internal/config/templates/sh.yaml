@@ -1,0 +1,9 @@
+name: sh
+description: POSIX sh-script servers
+detect:
+  files:
+    - serve.sh
+    - start.sh
+  port_env_keys:
+    - PORT
+command: sh ./serve.sh

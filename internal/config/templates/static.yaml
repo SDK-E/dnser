@@ -1,0 +1,7 @@
+name: static
+description: Static sites / proxy-only projects (no managed process)
+detect:
+  files:
+    - index.html
+  default_port: 0
+availability: always

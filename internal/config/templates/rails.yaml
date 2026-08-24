@@ -1,0 +1,13 @@
+name: rails
+description: Ruby on Rails applications
+detect:
+  files:
+    - Gemfile
+    - config/application.rb
+    - bin/rails
+  port_env_keys:
+    - PORT
+  default_port: 3000
+command: bin/rails server --port {port}
+env:
+  RAILS_ENV: development

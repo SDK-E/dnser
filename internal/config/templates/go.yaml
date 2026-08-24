@@ -1,0 +1,10 @@
+name: go
+description: Go services (go run or compiled binary)
+detect:
+  files:
+    - go.mod
+    - go.sum
+  port_env_keys:
+    - PORT
+  default_port: 8080
+command: go run .
