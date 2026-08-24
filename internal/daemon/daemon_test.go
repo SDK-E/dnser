@@ -133,7 +133,7 @@ func TestRuntimeHotReloadPicksUpNewProject(t *testing.T) {
 	}
 	defer func() { _ = rt.Shutdown(context.Background()) }()
 
-	if _, ok := rt.Router().Lookup("second.test"); ok {
+	if _, ok := rt.Router().Lookup("second.test", "/"); ok {
 		t.Fatal("second.test should not be routed before link")
 	}
 
@@ -158,7 +158,7 @@ func TestRuntimeHotReloadPicksUpNewProject(t *testing.T) {
 		t.Fatal("reload notification never arrived")
 	}
 
-	if _, ok := rt.Router().Lookup("second.test"); !ok {
+	if _, ok := rt.Router().Lookup("second.test", "/"); !ok {
 		t.Error("hot reload did not add route for second.test")
 	}
 }

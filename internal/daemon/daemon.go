@@ -32,6 +32,8 @@ type Runtime struct {
 	ui      *api.Server
 	checker *health.Checker
 	runner  *runner.Supervisor
+	tcp     *proxyd.TCPManager
+	udp     *proxyd.UDPManager
 
 	depsMissing map[string]string
 
@@ -48,6 +50,7 @@ type Options struct {
 	DNSFallbacks  []int
 	Version       string
 	SkipListeners bool
+	UserHome      string
 }
 
 func New(opts Options) (*Runtime, error) {
@@ -68,12 +71,23 @@ func New(opts Options) (*Runtime, error) {
 		reloaded:    make(chan struct{}, 1),
 		depsMissing: map[string]string{},
 	}
-	rt.runner = runner.NewSupervisor(runner.Options{
-		LogsDir: filepath.Join(filepath.Dir(opts.Store.Path()), "logs"),
-		Stream:  rt.stream,
-	})
-
+	dnserHome := filepath.Dir(opts.Store.Path())
+	userHome := opts.UserHome
+	if userHome == "" {
+		userHome = inferUserHome(dnserHome)
+	}
 	cfg := rt.store.Get()
+	pathRefresh := time.Duration(cfg.Settings.PathRefresh()) * time.Minute
+	rt.runner = runner.NewSupervisor(runner.Options{
+		LogsDir:     filepath.Join(dnserHome, "logs"),
+		Stream:      rt.stream,
+		UserHome:    userHome,
+		DnserHome:   dnserHome,
+		PathRefresh: pathRefresh,
+	})
+	rt.router = proxyd.NewRouter()
+	rt.tcp = proxyd.NewTCPManager(rt.router)
+	rt.udp = proxyd.NewUDPManager(rt.router)
 
 	ca, err := certs.NewCA(opts.CertsDir)
 	if err != nil {
@@ -81,7 +95,6 @@ func New(opts Options) (*Runtime, error) {
 	}
 	rt.ca = ca
 	rt.manager = certs.NewManager(ca)
-	rt.router = proxyd.NewRouter()
 
 	engine := dnscore.NewEngine(cfg)
 	forward, err := dnscore.NewForwarder(cfg.Settings.Upstreams)
@@ -144,7 +157,10 @@ func New(opts Options) (*Runtime, error) {
 			for backend, url := range rt.router.Backends() {
 				probes[backend] = health.Probe{URL: url}
 			}
-			for _, backend := range rt.router.DialBackends() {
+			for _, backend := range rt.tcp.Backends() {
+				probes[backend] = health.Probe{URL: backend, Dial: true}
+			}
+			for _, backend := range rt.udp.Backends() {
 				probes[backend] = health.Probe{URL: backend, Dial: true}
 			}
 			return probes
@@ -175,6 +191,17 @@ func New(opts Options) (*Runtime, error) {
 	return rt, nil
 }
 
+func inferUserHome(dnserHome string) string {
+	clean := filepath.Clean(dnserHome)
+	if filepath.Base(clean) == ".dnser" {
+		return filepath.Dir(clean)
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return home
+	}
+	return ""
+}
+
 func pickDNSPort(bind string, preferred int, fallbacks []int) (int, string, error) {
 	port, err := dnscore.PickPort(bind, preferred, fallbacks...)
 	if err != nil {
@@ -189,18 +216,40 @@ func pickDNSPort(bind string, preferred int, fallbacks []int) (int, string, erro
 
 func (rt *Runtime) applyRoutes(cfg config.Config, uiPort int) {
 	var routes []proxyd.Route
+	var tcpRoutes []proxyd.TCPRoute
+	var udpRoutes []proxyd.UDPRoute
 	tld := cfg.Settings.TLD
+	globalForce := cfg.Settings.ForceHTTPS
 	for _, p := range cfg.Projects {
+		ports := p.ServicePortMap()
 		for _, route := range p.Routes {
-			if route.TCP || len(route.Backends) == 0 {
-				continue
+			host := route.Hostname(p.Domain, tld)
+			backends := runner.SubstituteBackendStrings(route.Backends, ports)
+			switch {
+			case route.TCP:
+				if len(backends) > 0 && route.Listen > 0 {
+					tcpRoutes = append(tcpRoutes, proxyd.TCPRoute{Listen: route.Listen, Host: host, Backends: backends})
+				}
+			case route.UDP:
+				if len(backends) > 0 && route.Listen > 0 {
+					udpRoutes = append(udpRoutes, proxyd.UDPRoute{Listen: route.Listen, Host: host, Backends: backends})
+				}
+			default:
+				if len(backends) == 0 {
+					continue
+				}
+				paths := make([]string, len(route.Paths))
+				for i, pref := range route.Paths {
+					paths[i] = config.NormalizePathPrefix(pref)
+				}
+				routes = append(routes, proxyd.Route{
+					Host:       host,
+					Backends:   backends,
+					HTTPS:      route.HTTPS,
+					ForceHTTPS: route.EffectiveForceHTTPS(globalForce),
+					Paths:      paths,
+				})
 			}
-			routes = append(routes, proxyd.Route{
-				Host:       route.Hostname(p.Domain, tld),
-				Backends:   route.Backends,
-				HTTPS:      route.HTTPS,
-				ForceHTTPS: route.ForceHTTPS,
-			})
 		}
 	}
 	dashTarget := fmt.Sprintf("%s:%d", cfg.Settings.Bind, uiPort)
@@ -208,6 +257,16 @@ func (rt *Runtime) applyRoutes(cfg config.Config, uiPort int) {
 		proxyd.Route{Host: config.DashboardDomain(cfg.Settings.TLD), Backends: []string{dashTarget}, HTTPS: true},
 	)
 	rt.router.Replace(routes)
+	if rt.tcp != nil {
+		if err := rt.tcp.Apply(tcpRoutes); err != nil {
+			slog.Warn("tcp forwarders partially applied", "err", err)
+		}
+	}
+	if rt.udp != nil {
+		if err := rt.udp.Apply(udpRoutes); err != nil {
+			slog.Warn("udp forwarders partially applied", "err", err)
+		}
+	}
 }
 
 func (rt *Runtime) Reload(cfg config.Config) error {
@@ -283,6 +342,16 @@ func (rt *Runtime) Shutdown(ctx context.Context) error {
 	}
 	if err := rt.proxy.Shutdown(ctx); err != nil && firstErr == nil {
 		firstErr = err
+	}
+	if rt.tcp != nil {
+		if err := rt.tcp.Shutdown(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if rt.udp != nil {
+		if err := rt.udp.Shutdown(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
 	return firstErr
 }
