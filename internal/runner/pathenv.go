@@ -86,24 +86,19 @@ func (p *PathResolver) String() string {
 }
 
 func (p *PathResolver) refreshLocked(now time.Time) {
-	ttl := p.ttl()
-	cachedPath, cachedAt, cachedShell := p.readCache()
-	currentShell := p.opts.Shell
-	if currentShell == "" {
-		currentShell = os.Getenv("SHELL")
-	}
+	cachedPath, cachedAt, _ := p.readCache()
 	var loginPath string
-	if !cachedAt.IsZero() && now.Sub(cachedAt) < ttl && cachedPath != "" && (currentShell == "" || cachedShell == currentShell) {
+	if !cachedAt.IsZero() && now.Sub(cachedAt) < p.ttl() && cachedPath != "" {
 		loginPath = cachedPath
 	} else {
-		loginPath = p.capture(cachedPath, cachedAt)
+		loginPath = p.capture(cachedPath)
 	}
 	p.login = loginPath
 	p.dirs = BuildPathList(p.opts.CurrentPATH, loginPath, p.opts.ExtraPATH, p.opts.UserHome, runtime.GOOS, os.Getenv)
 	p.builtAt = now
 }
 
-func (p *PathResolver) capture(stalePath string, staleAt time.Time) string {
+func (p *PathResolver) capture(stalePath string) string {
 	shell := p.opts.Shell
 	if shell == "" {
 		shell = os.Getenv("SHELL")
@@ -113,11 +108,19 @@ func (p *PathResolver) capture(stalePath string, staleAt time.Time) string {
 	}
 	fresh, err := p.opts.Capture(shell)
 	if err != nil || strings.TrimSpace(fresh) == "" {
-		p.writeCache(pathCache{Version: pathCacheVersion, Shell: shell, Path: stalePath, CapturedAt: staleAt})
+		p.writeCache(pathCache{Version: pathCacheVersion, Shell: shell, Path: stalePath, CapturedAt: p.lastCapture(stalePath)})
 		return stalePath
 	}
 	p.writeCache(pathCache{Version: pathCacheVersion, Shell: shell, Path: fresh, CapturedAt: p.opts.Clock()})
 	return fresh
+}
+
+func (p *PathResolver) lastCapture(stalePath string) time.Time {
+	_, at, _ := p.readCache()
+	if at.IsZero() {
+		return p.opts.Clock()
+	}
+	return at
 }
 
 func (p *PathResolver) cachePath() string {

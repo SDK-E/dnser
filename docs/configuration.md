@@ -44,7 +44,7 @@ Machine-readable schema (Draft 2020-12): `dnser schema` or
 | `upstreams` | Quad9 + Cloudflare | Upstream resolvers for forwarded queries (at least one required). |
 | `autostart` | `true` | Start the daemon at login (desktop installs). |
 | `force_https` | `false` | **Global default redirect**: when `true`, every route that has `https: true` also redirects plain HTTP → HTTPS. A per-route `force_https: true` overrides independently of this flag. |
-| `path_refresh_minutes` | `1440` | TTL for the cached login-shell `PATH` used to launch managed commands and services. Recaptured when missing, older than the TTL, or when `$SHELL` changed. `0` = default. |
+| `path_refresh_minutes` | `1440` | TTL for the cached login-shell `PATH` used to launch managed commands and services. Recaptured when missing or older than the TTL. `0` = default. |
 | `ports.dns` / `ports.http` / `ports.https` / `ports.ui` | `53/80/443/4500` | Listener ports. Privileged ports fall back (`53→5353→35353`, `80→8080`, `443→8443`) with a warning instead of failing. |
 
 Change any of these without editing JSON:

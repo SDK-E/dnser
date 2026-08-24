@@ -33,9 +33,9 @@ uses it for every managed command and service:
 4. the daemon's inherited PATH last.
 
 Duplicates collapse to the first occurrence. The cache refreshes after
-`settings.path_refresh_minutes` (default 24 h), when missing, or when `$SHELL`
-changes — so installing a new tool later just needs the TTL to elapse or a
-daemon restart.
+`settings.path_refresh_minutes` (default 24 h) or when the file is missing —
+so installing a new tool later just needs the TTL to elapse or a daemon
+restart (`rm ~/.dnser/path-cache.json && dnser restart` forces it).
 
 Power-user override: set `DNSER_EXTRA_PATH` in the daemon's environment;
 those entries are prepended verbatim.
