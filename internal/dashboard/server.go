@@ -40,6 +40,9 @@ func EnsureToken() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return "", fmt.Errorf("create ~/.dnser: %w", err)
+	}
 	if data, rerr := os.ReadFile(path); rerr == nil && len(strings.TrimSpace(string(data))) >= 32 {
 		return strings.TrimSpace(string(data)), nil
 	}
