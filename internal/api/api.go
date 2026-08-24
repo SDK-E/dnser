@@ -24,6 +24,7 @@ type Runtime interface {
 	Runner() *runner.Supervisor
 	DepsMissing() map[string]string
 	SyncRunner()
+	EffectivePATHDirs() []string
 }
 
 type Server struct {
@@ -42,10 +43,15 @@ func New(rt Runtime, version string) *Server {
 	mux.HandleFunc("DELETE /api/v1/projects/{domain}", s.handleDeleteProject)
 	mux.HandleFunc("POST /api/v1/projects/{domain}/records", s.handleAddRecord)
 	mux.HandleFunc("DELETE /api/v1/projects/{domain}/records", s.handleRemoveRecord)
+	mux.HandleFunc("GET /api/v1/settings", s.handleGetSettings)
+	mux.HandleFunc("PUT /api/v1/settings", s.handleUpdateSettings)
+	mux.HandleFunc("GET /api/v1/schema/config", s.handleSchemaConfig)
+	mux.HandleFunc("GET /api/v1/schema/project", s.handleSchemaProject)
 	mux.HandleFunc("GET /api/v1/runner", s.handleRunner)
 	mux.HandleFunc("POST /api/v1/runner/{domain}/restart", s.handleRunnerRestart)
 	mux.HandleFunc("POST /api/v1/runner/{domain}/stop", s.handleRunnerStop)
 	mux.HandleFunc("POST /api/v1/runner/{domain}/start", s.handleRunnerStart)
+	mux.HandleFunc("POST /api/v1/runner/action/{action}/{key...}", s.handleRunnerAction)
 	mux.HandleFunc("GET /api/v1/doctor", s.handleDoctor)
 	mux.HandleFunc("POST /api/v1/detect", s.handleDetect)
 	mux.HandleFunc("GET /api/v1/logs", s.handleLogs)
@@ -157,13 +163,14 @@ type backendHealthView struct {
 }
 
 type createProjectReq struct {
-	Domain     string         `json:"domain"`
-	Path       string         `json:"path,omitempty"`
-	Routes     []config.Route `json:"routes,omitempty"`
-	Port       int            `json:"port,omitempty"`
-	Wildcard   bool           `json:"wildcard,omitempty"`
-	HTTPS      bool           `json:"https,omitempty"`
-	ForceHTTPS bool           `json:"force_https,omitempty"`
+	Domain     string           `json:"domain"`
+	Path       string           `json:"path,omitempty"`
+	Routes     []config.Route   `json:"routes,omitempty"`
+	Services   []config.Service `json:"services,omitempty"`
+	Port       int              `json:"port,omitempty"`
+	Wildcard   bool             `json:"wildcard,omitempty"`
+	HTTPS      bool             `json:"https,omitempty"`
+	ForceHTTPS bool             `json:"force_https,omitempty"`
 }
 
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +195,9 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 				if len(routes) > 0 {
 					c.Projects[i].Routes = routes
 				}
+				if req.Services != nil {
+					c.Projects[i].Services = req.Services
+				}
 				if req.Path != "" {
 					c.Projects[i].Path = req.Path
 				}
@@ -195,9 +205,10 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		c.Projects = append(c.Projects, config.Project{
-			Domain: domain,
-			Path:   req.Path,
-			Routes: routes,
+			Domain:   domain,
+			Path:     req.Path,
+			Services: req.Services,
+			Routes:   routes,
 		})
 	})
 	if err != nil {
@@ -209,11 +220,12 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateProjectReq struct {
-	Routes   *[]config.Route `json:"routes,omitempty"`
-	Path     *string         `json:"path,omitempty"`
-	Port     *int            `json:"port,omitempty"`
-	Wildcard *bool           `json:"wildcard,omitempty"`
-	HTTPS    *bool           `json:"https,omitempty"`
+	Routes   *[]config.Route   `json:"routes,omitempty"`
+	Services *[]config.Service `json:"services,omitempty"`
+	Path     *string           `json:"path,omitempty"`
+	Port     *int              `json:"port,omitempty"`
+	Wildcard *bool             `json:"wildcard,omitempty"`
+	HTTPS    *bool             `json:"https,omitempty"`
 }
 
 func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
@@ -236,6 +248,9 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 			updated = true
 			if req.Routes != nil {
 				c.Projects[i].Routes = *req.Routes
+			}
+			if req.Services != nil {
+				c.Projects[i].Services = *req.Services
 			}
 			if req.Path != nil {
 				c.Projects[i].Path = *req.Path

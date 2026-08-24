@@ -5,12 +5,14 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/SDK-E/dnser/internal/config"
 	"github.com/SDK-E/dnser/internal/runner"
 )
 
@@ -27,6 +29,47 @@ func (s *Server) handleRunner(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Domain < out[j].Domain })
 	writeJSON(w, http.StatusOK, map[string]any{"apps": out, "deps_missing": s.rt.DepsMissing()})
+}
+
+func (s *Server) handleRunnerAction(w http.ResponseWriter, r *http.Request) {
+	action := r.PathValue("action")
+	key := r.PathValue("key")
+	sup := s.rt.Runner()
+	if sup == nil {
+		writeErr(w, http.StatusServiceUnavailable, "runner unavailable")
+		return
+	}
+	switch action {
+	case "restart":
+		if err := sup.Restart(key); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	case "stop":
+		if !sup.Stop(key) {
+			writeErr(w, http.StatusNotFound, "project is not managed by the runner")
+			return
+		}
+	case "start":
+		found := false
+		for _, p := range s.rt.Store().Projects() {
+			if p.Domain == key || strings.HasPrefix(key, p.Domain+"/") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "unknown project")
+			return
+		}
+		s.rt.SyncRunner()
+	default:
+		writeErr(w, http.StatusNotFound, "unknown action")
+		return
+	}
+	time.Sleep(200 * time.Millisecond)
+	info, _ := sup.Get(key)
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (s *Server) handleRunnerRestart(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +195,8 @@ func (s *Server) handleDoctor(w http.ResponseWriter, r *http.Request) {
 		checks = append(checks, doctorCheck{Name: "projects", Status: "ok", Detail: "all managed projects ready"})
 	}
 
+	checks = append(checks, s.commandsCheck())
+
 	status := "ok"
 	for _, c := range checks {
 		if c.Status == "fail" {
@@ -163,6 +208,64 @@ func (s *Server) handleDoctor(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": status, "checks": checks})
+}
+
+func (s *Server) commandsCheck() doctorCheck {
+	dirs := s.rt.EffectivePATHDirs()
+	var problems []string
+	for _, p := range s.rt.Store().Projects() {
+		for _, cmd := range projectCommands(p) {
+			bin := runner.CommandBinary(cmd)
+			if bin == "" {
+				continue
+			}
+			if _, err := runner.ResolveCommandPath(dirs, bin); err != nil {
+				problems = append(problems, fmt.Sprintf("%s: %s not found in daemon PATH — install it or extend the daemon's PATH", p.Domain, bin))
+			}
+		}
+	}
+	if len(problems) == 0 {
+		return doctorCheck{Name: "commands", Status: "ok", Detail: "all managed commands resolve in daemon PATH"}
+	}
+	sort.Strings(problems)
+	return doctorCheck{Name: "commands", Status: "warn",
+		Detail: strings.Join(problems, "; ") + " — see docs/troubleshooting.md#managed-command-path"}
+}
+
+func projectCommands(p config.Project) []string {
+	var out []string
+	if p.Run != nil && strings.TrimSpace(p.Run.Command) != "" {
+		out = append(out, p.Run.Command)
+	}
+	dir := p.Path
+	if dir == "" {
+		return out
+	}
+	if abs, err := expandTilde(dir); err == nil {
+		dir = abs
+	}
+	if doc, err := runner.ParseDotDnserDir(dir); err == nil && doc != nil {
+		if doc.Command != "" && (p.Run == nil || strings.TrimSpace(p.Run.Command) == "") {
+			out = append(out, doc.Command)
+		}
+		for _, svc := range doc.Services {
+			if svc.Command != "" {
+				out = append(out, svc.Command)
+			}
+		}
+	}
+	return out
+}
+
+func expandTilde(path string) (string, error) {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path, err
+		}
+		return filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/")), nil
+	}
+	return filepath.Abs(path)
 }
 
 func probePort(bind string, port int) (string, string) {
