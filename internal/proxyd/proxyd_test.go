@@ -58,7 +58,7 @@ func TestRouterLookupExactWildcardAndPort(t *testing.T) {
 		{"unknown.test", "", false},
 	}
 	for _, c := range cases {
-		rt, ok := r.Lookup(c.host)
+		rt, ok := r.Lookup(c.host, "/")
 		if ok != c.ok || (ok && rt.Backends[0] != c.target) {
 			t.Errorf("Lookup(%q) = (%+v, %v), want backend %q ok=%v", c.host, rt, ok, c.target, c.ok)
 		}

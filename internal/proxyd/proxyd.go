@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,26 +23,27 @@ type Route struct {
 	Backends   []string
 	HTTPS      bool
 	ForceHTTPS bool
-	TCP        bool
-	Listen     int
+	Paths      []string
 }
 
 type Router struct {
 	mu     sync.RWMutex
-	routes map[string]Route
+	routes map[string][]Route
 	rr     map[string]*atomic.Uint64
 }
 
 func NewRouter() *Router {
-	return &Router{routes: make(map[string]Route), rr: make(map[string]*atomic.Uint64)}
+	return &Router{routes: make(map[string][]Route), rr: make(map[string]*atomic.Uint64)}
 }
 
 func (r *Router) Replace(routes []Route) {
-	table := make(map[string]Route, len(routes))
+	table := make(map[string][]Route, len(routes))
 	counters := make(map[string]*atomic.Uint64, len(routes))
 	for _, rt := range routes {
 		key := strings.ToLower(rt.Host)
-		table[key] = rt
+		table[key] = append(table[key], rt)
+	}
+	for key := range table {
 		counters[key] = new(atomic.Uint64)
 		if old, ok := r.rr[key]; ok {
 			counters[key] = old
@@ -70,54 +72,73 @@ func (r *Router) Pick(host string, backends []string) (string, bool) {
 	return backends[int(counter.Add(1))%n], true
 }
 
-func (r *Router) Lookup(host string) (Route, bool) {
+func (r *Router) Lookup(host, reqPath string) (Route, bool) {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	if i := strings.LastIndex(host, ":"); i >= 0 && !strings.Contains(host, "]") {
 		host = host[:i]
 	}
+	if reqPath == "" {
+		reqPath = "/"
+	} else if !strings.HasPrefix(reqPath, "/") {
+		reqPath = "/" + reqPath
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if rt, ok := r.routes[host]; ok {
-		return rt, true
+	if list, ok := r.routes[host]; ok {
+		if rt, found := bestPathMatch(list, reqPath); found {
+			return rt, true
+		}
 	}
 	parts := strings.Split(host, ".")
 	for i := 1; i < len(parts); i++ {
 		wild := "*." + strings.Join(parts[i:], ".")
-		if rt, ok := r.routes[wild]; ok {
-			return rt, true
+		if list, ok := r.routes[wild]; ok {
+			if rt, found := bestPathMatch(list, reqPath); found {
+				return rt, true
+			}
 		}
 	}
 	return Route{}, false
 }
 
+func bestPathMatch(list []Route, reqPath string) (Route, bool) {
+	bestLen := -1
+	best := Route{}
+	found := false
+	for _, rt := range list {
+		if len(rt.Paths) == 0 {
+			if !found {
+				best, found = rt, true
+			}
+			continue
+		}
+		for _, p := range rt.Paths {
+			if n := pathPrefixLen(p, reqPath); n > bestLen {
+				best, found, bestLen = rt, true, n
+			}
+		}
+	}
+	return best, found
+}
+
+func pathPrefixLen(pattern, reqPath string) int {
+	if pattern == reqPath || pattern == "/" && strings.HasPrefix(reqPath, "/") {
+		return len(pattern)
+	}
+	if strings.HasPrefix(reqPath, pattern+"/") {
+		return len(pattern)
+	}
+	return -1
+}
+
 func (r *Router) Backends() map[string]string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make(map[string]string, len(r.routes))
-	for _, rt := range r.routes {
-		for _, b := range rt.Backends {
-			if rt.TCP {
-				continue
-			}
-			out[b] = "http://" + b
-		}
-	}
-	return out
-}
-
-func (r *Router) DialBackends() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	seen := map[string]bool{}
-	var out []string
-	for _, rt := range r.routes {
-		if !rt.TCP {
-			continue
-		}
-		for _, b := range rt.Backends {
-			if !seen[b] {
-				seen[b] = true
-				out = append(out, b)
+	out := make(map[string]string)
+	for _, list := range r.routes {
+		for _, rt := range list {
+			for _, b := range rt.Backends {
+				out[b] = "http://" + b
 			}
 		}
 	}
@@ -127,10 +148,11 @@ func (r *Router) DialBackends() []string {
 func (r *Router) Routes() []Route {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]Route, 0, len(r.routes))
-	for _, rt := range r.routes {
-		out = append(out, rt)
+	var out []Route
+	for _, list := range r.routes {
+		out = append(out, list...)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Host < out[j].Host })
 	return out
 }
 
@@ -191,7 +213,7 @@ func NewServer(router *Router, manager *certs.Manager) *Server {
 }
 
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
-	rt, ok := s.router.Lookup(r.Host)
+	rt, ok := s.router.Lookup(r.Host, r.URL.Path)
 	switch {
 	case ok && rt.ForceHTTPS && rt.HTTPS:
 		http.Redirect(w, r, "https://"+hostOnly(r.Host)+r.URL.RequestURI(), http.StatusPermanentRedirect)
@@ -203,7 +225,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
-	rt, ok := s.router.Lookup(r.Host)
+	rt, ok := s.router.Lookup(r.Host, r.URL.Path)
 	if !ok {
 		writeNotFound(w, r)
 		return

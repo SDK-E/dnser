@@ -161,6 +161,22 @@ func (m *TCPManager) ActivePorts() []int {
 	return out
 }
 
+func (m *TCPManager) Backends() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := map[string]bool{}
+	var out []string
+	for _, f := range m.forwarders {
+		for _, b := range f.route.Backends {
+			if !seen[b] {
+				seen[b] = true
+				out = append(out, b)
+			}
+		}
+	}
+	return out
+}
+
 func (m *TCPManager) Shutdown(ctx context.Context) error {
 	m.stopOnce.Do(func() { close(m.done) })
 	m.mu.Lock()
