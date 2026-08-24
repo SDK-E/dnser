@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -175,6 +176,26 @@ func (s *Store) Update(mutate func(*Config)) error {
 				backends = append(backends, strings.TrimSpace(b))
 			}
 			route.Backends = backends
+			paths := make([]string, 0, len(route.Paths))
+			for _, pref := range route.Paths {
+				if norm := NormalizePathPrefix(pref); norm != "" {
+					paths = append(paths, norm)
+				}
+			}
+			sort.Strings(paths)
+			route.Paths = paths
+		}
+		for j := range p.Services {
+			svc := &p.Services[j]
+			name, err := NormalizeLabel(svc.Name)
+			if err != nil {
+				return fmt.Errorf("project %d service %d name: %w", i, j, err)
+			}
+			svc.Name = name
+			svc.Type = strings.ToLower(strings.TrimSpace(svc.Type))
+			svc.Command = strings.TrimSpace(svc.Command)
+			svc.Host = strings.ToLower(strings.TrimSpace(svc.Host))
+			svc.Transport = strings.ToLower(strings.TrimSpace(svc.Transport))
 		}
 		for j := range p.Records {
 			name, err := NormalizeLabel(p.Records[j].Name)
@@ -243,6 +264,9 @@ func (s *Store) snapshotLocked() Config {
 			if p.Run != nil {
 				run := *p.Run
 				p.Run = &run
+			}
+			if len(p.Services) > 0 {
+				p.Services = append([]Service(nil), s.cfg.Projects[i].Services...)
 			}
 			p.Records = append([]Record(nil), s.cfg.Projects[i].Records...)
 		}

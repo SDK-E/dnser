@@ -3,9 +3,13 @@ package config
 import (
 	"fmt"
 	"net"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
+
+var typeRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 func Validate(cfg Config) error {
 	if cfg.Version > CurrentVersion {
@@ -44,6 +48,9 @@ func Validate(cfg Config) error {
 		if port < 1 || port > 65535 {
 			return fmt.Errorf("settings.ports.%s: %d out of range 1-65535", name, port)
 		}
+	}
+	if s.PathRefreshMins < 0 || s.PathRefreshMins > 525600 {
+		return fmt.Errorf("settings.path_refresh_minutes: %d out of range 0-525600", s.PathRefreshMins)
 	}
 
 	corePorts := map[int]string{
@@ -87,9 +94,15 @@ func Validate(cfg Config) error {
 				return fmt.Errorf("projects[%d] (%s).routes[%d] (%s): at least one backend required", i, domain, j, resolved)
 			}
 			for k, b := range route.Backends {
-				h, portStr, err := net.SplitHostPort(strings.TrimSpace(b))
+				h, portStr, err := splitBackend(strings.TrimSpace(b))
 				if err != nil {
 					return fmt.Errorf("projects[%d] (%s).routes[%d].backends[%d]: %q must be host:port", i, domain, j, k, b)
+				}
+				if IsPortPlaceholder(portStr) {
+					if h == "" {
+						return fmt.Errorf("projects[%d] (%s).routes[%d].backends[%d]: empty backend host in %q", i, domain, j, k, b)
+					}
+					continue
 				}
 				port, perr := strconv.Atoi(portStr)
 				if perr != nil {
@@ -107,19 +120,93 @@ func Validate(cfg Config) error {
 					return fmt.Errorf("projects[%d] (%s).routes[%d].backends[%d]: port %d out of range", i, domain, j, k, port)
 				}
 			}
-			if route.TCP {
+			if (route.TCP || route.UDP) && route.TCP == route.UDP {
+				return fmt.Errorf("projects[%d] (%s).routes[%d] (%s): tcp and udp are mutually exclusive", i, domain, j, resolved)
+			}
+			if route.Forwarded() {
 				if route.Listen < 1 || route.Listen > 65535 {
-					return fmt.Errorf("projects[%d] (%s).routes[%d] (tcp): listen port required (1-65535)", i, domain, j)
+					kind := "tcp"
+					if route.UDP {
+						kind = "udp"
+					}
+					return fmt.Errorf("projects[%d] (%s).routes[%d] (%s): %s listen port required (1-65535)", i, domain, j, resolved, kind)
 				}
 				if owner, clash := tcpListens[route.Listen]; clash {
-					return fmt.Errorf("projects[%d] (%s).routes[%d]: tcp listen %d already used by %s", i, domain, j, route.Listen, owner)
+					return fmt.Errorf("projects[%d] (%s).routes[%d]: listen %d already used by %s", i, domain, j, route.Listen, owner)
 				}
 				tcpListens[route.Listen] = fmt.Sprintf("projects[%d] (%s).routes[%d]", i, domain, j)
 			} else if route.Listen != 0 {
-				return fmt.Errorf("projects[%d] (%s).routes[%d]: listen is only valid for tcp routes", i, domain, j)
+				return fmt.Errorf("projects[%d] (%s).routes[%d]: listen is only valid for tcp/udp routes", i, domain, j)
 			}
+			if route.HTTPS && (route.TCP || route.UDP) {
+				return fmt.Errorf("projects[%d] (%s).routes[%d] (%s): https does not apply to tcp/udp routes", i, domain, j, resolved)
+			}
+			pathSeen := map[string]bool{}
+			for k, raw := range route.Paths {
+				p := NormalizePathPrefix(raw)
+				if p == "" || p == "/" {
+					return fmt.Errorf("projects[%d] (%s).routes[%d].paths[%d]: %q must be a path prefix like /api", i, domain, j, k, raw)
+				}
+				if strings.ContainsAny(p, " \t\"'") {
+					return fmt.Errorf("projects[%d] (%s).routes[%d].paths[%d]: %q contains invalid characters", i, domain, j, k, raw)
+				}
+				if pathSeen[p] {
+					return fmt.Errorf("projects[%d] (%s).routes[%d].paths[%d]: duplicate path %q", i, domain, j, k, p)
+				}
+				pathSeen[p] = true
+			}
+			route.Paths = nil
+			for pref := range pathSeen {
+				route.Paths = append(route.Paths, pref)
+			}
+			sort.Strings(route.Paths)
+			p.Routes[j].Paths = route.Paths
 			if route.ForceHTTPS && !route.HTTPS {
 				return fmt.Errorf("projects[%d] (%s).routes[%d] (%s): force_https requires https", i, domain, j, resolved)
+			}
+		}
+
+		svcSeen := map[string]bool{}
+		for j, svc := range p.Services {
+			name, err := NormalizeLabel(svc.Name)
+			if err != nil {
+				return fmt.Errorf("projects[%d] (%s).services[%d].name: %w", i, domain, j, err)
+			}
+			if svcSeen[name] {
+				return fmt.Errorf("projects[%d] (%s): duplicate service %q", i, domain, name)
+			}
+			svcSeen[name] = true
+			p.Services[j].Name = name
+			switch svc.Transport {
+			case "", "tcp", "udp":
+				p.Services[j].Transport = svc.Transport
+			default:
+				return fmt.Errorf("projects[%d] (%s).services[%d].transport: %q not supported (use \"tcp\" or \"udp\")", i, domain, j, svc.Transport)
+			}
+			svcType := strings.ToLower(strings.TrimSpace(svc.Type))
+			if svcType != "" && !typeRe.MatchString(svcType) {
+				return fmt.Errorf("projects[%d] (%s).services[%d].type: %q is not a valid service label", i, domain, j, svc.Type)
+			}
+			p.Services[j].Type = svcType
+			managed := strings.TrimSpace(svc.Command) != ""
+			switch {
+			case managed && svc.Host != "":
+				return fmt.Errorf("projects[%d] (%s).services[%d] (%s): command and host are mutually exclusive (managed or external, not both)", i, domain, j, name)
+			case managed:
+				if svc.Port < 0 || svc.Port > 65535 {
+					return fmt.Errorf("projects[%d] (%s).services[%d] (%s).port: %d out of range", i, domain, j, name, svc.Port)
+				}
+			case svc.Host != "":
+				if net.ParseIP(svc.Host) == nil {
+					if _, err := NormalizeDomain(svc.Host); err != nil {
+						return fmt.Errorf("projects[%d] (%s).services[%d] (%s).host: invalid endpoint host %q", i, domain, j, name, svc.Host)
+					}
+				}
+				if svc.Port < 1 || svc.Port > 65535 {
+					return fmt.Errorf("projects[%d] (%s).services[%d] (%s).port: %d out of range (external services need 1-65535)", i, domain, j, name, svc.Port)
+				}
+			default:
+				return fmt.Errorf("projects[%d] (%s).services[%d] (%s): needs command: (managed) or host: (external)", i, domain, j, name)
 			}
 		}
 
