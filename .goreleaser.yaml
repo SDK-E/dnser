@@ -1,0 +1,80 @@
+version: 2
+
+project_name: dnser
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dnser
+    main: ./cmd/dnser
+    binary: dnser
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X github.com/SDK-E/dnser/internal/buildinfo.version={{ .Version }}
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: SDK-E
+    name: dnser
+
+homebrew_casks:
+  - name: dnser
+    repository:
+      owner: SDK-E
+      name: homebrew-tap
+    homepage: https://github.com/SDK-E/dnser
+    description: Local domains, TLS and dev-server orchestration
+    license: MIT
+    binaries:
+      - dnser
+    dependencies:
+      - formula: caddy
+      - formula: process-compose
+      - formula: mkcert
+    manpages:
+      - packaging/man/dnser.1.gz
+    uninstall:
+      launchctl:
+        - enterprises.sdk.dnser
+      delete:
+        - ~/.dnser
+    zap:
+      delete:
+        - ~/.dnser
+
+nfpms:
+  - id: dnser
+    package_name: dnser
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    homepage: https://github.com/SDK-E/dnser
+    maintainer: SDK-E <hicham@sdk.enterprises>
+    description: |-
+      Local domains, TLS and dev-server orchestration.
+      dnser manages project manifests, DNS, TLS and supervised dev servers.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    dependencies:
+      - caddy
+      - process-compose
+      - mkcert
+    contents:
+      - src: packaging/man/dnser.1.gz
+        dst: /usr/share/man/man1/dnser.1.gz

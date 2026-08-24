@@ -61,6 +61,38 @@ func countMissingResolverFiles(expected []dnsl.Entry) int {
 	return missing
 }
 
+func removeServiceBestEffort() {
+	target, err := helper.ServiceInstallTarget()
+	if err != nil || target == "" {
+		return
+	}
+	name := helper.ServiceLabel()
+	ops := helper.ServiceOps()
+	if ops == nil {
+		return
+	}
+	if loaded, lerr := ops.IsLoaded(context.Background(), name); lerr == nil && loaded {
+		_ = ops.Unload(context.Background(), name)
+	}
+	_ = os.Remove(target)
+}
+
+func untrustCABestEffort() {
+	dot, err := homeDot()
+	if err != nil {
+		return
+	}
+	caPath := filepath.Join(dot, "ca", "root.pem")
+	if _, serr := os.Stat(caPath); serr != nil {
+		return
+	}
+	ops := helper.CATrustOps()
+	if ops == nil {
+		return
+	}
+	_ = ops.Untrust(context.Background(), caPath)
+}
+
 func splitDots(d string) []string {
 	var parts []string
 	cur := ""
@@ -424,6 +456,8 @@ When not to use: plain down is reversible; purge is not.`,
 			if _, uerr := revertAllPlans(ctx); uerr != nil {
 				return uerr
 			}
+			removeServiceBestEffort()
+			untrustCABestEffort()
 			dot, herr := homeDot()
 			if herr == nil {
 				_ = os.RemoveAll(filepath.Join(dot, "generated"))

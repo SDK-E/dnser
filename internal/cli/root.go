@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/SDK-E/dnser/internal/buildinfo"
 	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,8 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd.DisableSuggestions = true
 	cmd.SuggestionsMinimumDistance = 0
+	cmd.Version = buildinfo.Version()
+	cmd.SetVersionTemplate("dnser {{ .Version }}\n")
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&g.outputFormat, "output", "o", "", "output format: text|json|ndjson (default: text on TTY, json when piped)")
 	pf.StringVar(&g.fields, "fields", "", "comma-separated top-level JSON fields to keep")
@@ -97,7 +100,10 @@ func emitError(o *Output, err error) error {
 func Execute(ctx context.Context, args []string) error {
 	root := NewRootCommand()
 	root.SetArgs(args)
-	return fang.Execute(ctx, root)
+	return fang.Execute(ctx, root,
+		fang.WithVersion(buildinfo.Version()),
+		fang.WithCommit(buildinfo.Commit()),
+	)
 }
 
 func ExitCode(err error) int {

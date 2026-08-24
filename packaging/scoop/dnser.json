@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schema.json",
+  "version": "0.0.0-TEMPLATE",
+  "description": "Local domains, TLS and dev-server orchestration. Hand-maintained bucket entry (goreleaser scoop is Pro-only); update version/url/hash on each release.",
+  "homepage": "https://github.com/SDK-E/dnser",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/SDK-E/dnser/releases/download/v0.0.0-TEMPLATE/dnser_0.0.0-TEMPLATE_windows_amd64.zip",
+      "hash": "REPLACE-WITH-CHECKSUM-FROM-checksums.txt"
+    }
+  },
+  "bin": "dnser.exe",
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/SDK-E/dnser/releases/download/v$version/dnser_${version}_windows_amd64.zip"
+      }
+    }
+  },
+  "_notes": "Copy this file into the SDK-E scoop bucket repo on each release; replace TEMPLATE fields from the GitHub release checksums.txt. Depends on caddy/process-compose/mkcert being installed separately (scoop install caddy process-compose mkcert)."
+}
