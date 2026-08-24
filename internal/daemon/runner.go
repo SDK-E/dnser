@@ -34,7 +34,7 @@ func (rt *Runtime) syncRunner(cfg config.Config) {
 
 		pending := map[string]int{}
 		switch {
-		case specs[0].Port > 0 && !portFree(specs[0].Port):
+		case specs[0].Port > 0 && !rt.portHeldByOwnApp(p.Domain, specs[0].Port) && !portFree(specs[0].Port):
 			fresh, err := runner.AllocateFreePort(exclude)
 			if err != nil {
 				slog.Warn("runner: no free port to reallocate", "project", p.Domain, "err", err)
@@ -497,6 +497,17 @@ func portFree(port int) bool {
 	}
 	_ = ln.Close()
 	return true
+}
+
+func (rt *Runtime) portHeldByOwnApp(key string, port int) bool {
+	if rt.runner == nil || port <= 0 {
+		return false
+	}
+	info, ok := rt.runner.Get(key)
+	if !ok || info.Port != port || info.PID <= 0 {
+		return false
+	}
+	return info.State == runner.StateStarting || info.State == runner.StateUp
 }
 
 func expandPath(path string) string {

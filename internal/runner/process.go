@@ -206,15 +206,23 @@ func (s *Supervisor) childEnv(app *managedApp) []string {
 }
 
 func lookPathIn(dirs []string, bin string) (string, error) {
+	candidates := []string{bin}
+	if runtime.GOOS == "windows" && !strings.Contains(filepath.Ext(bin), ".") {
+		candidates = append(candidates, bin+".exe", bin+".cmd", bin+".bat")
+	}
 	for _, dir := range dirs {
-		candidate := filepath.Join(dir, bin)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && isExecutable(info) {
-			return candidate, nil
+		for _, candidate := range candidates {
+			full := filepath.Join(dir, candidate)
+			if info, err := os.Stat(full); err == nil && !info.IsDir() && isExecutable(info) {
+				return full, nil
+			}
 		}
 	}
-	if strings.ContainsRune(bin, os.PathSeparator) || filepath.IsAbs(bin) {
-		if _, err := os.Stat(bin); err == nil {
-			return bin, nil
+	for _, candidate := range candidates {
+		if strings.ContainsRune(candidate, os.PathSeparator) || filepath.IsAbs(candidate) {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
 		}
 	}
 	return "", fmt.Errorf("%q not found in %d PATH directories", bin, len(dirs))

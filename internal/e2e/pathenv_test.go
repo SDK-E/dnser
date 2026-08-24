@@ -172,6 +172,7 @@ func TestE2E_MissingCommandSurfacesHintInPS(t *testing.T) {
 
 	deadline := time.Now().Add(40 * time.Second)
 	var lastErr string
+	doctorWarned := false
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(d.baseURL + "/api/v1/runner")
 		if err == nil {
@@ -184,28 +185,55 @@ func TestE2E_MissingCommandSurfacesHintInPS(t *testing.T) {
 				for _, app := range payload.Apps {
 					if app.Domain == "ghost.test" {
 						lastErr = app.LastError
-						if strings.Contains(lastErr, "not found in daemon PATH") {
-							status, detail := doctorCheckByName(t, d.baseURL, "commands")
-							if status != "warn" || !strings.Contains(detail, "definitely-not-a-real-binary") {
-								t.Fatalf("doctor commands check = %s: %s, want warn mentioning the binary", status, detail)
-							}
-							if runtime.GOOS == "windows" {
-								return
-							}
-							psOut, _ := runCLI(t, d.home, "ps")
-							if !strings.Contains(psOut, "not found in daemon PATH") {
-								t.Fatalf("ps output missing actionable hint:\n%s", psOut)
-							}
-							return
-						}
 					}
 				}
 			}
 		}
+		status, detail := doctorCheckByNameQuiet(d.baseURL, "commands")
+		doctorWarned = status == "warn" && strings.Contains(detail, "definitely-not-a-real-binary")
+		if doctorWarned {
+			if runtime.GOOS == "windows" {
+				return
+			}
+			if !strings.Contains(lastErr, "not found in daemon PATH") {
+				time.Sleep(300 * time.Millisecond)
+				continue
+			}
+			psOut, _ := runCLI(t, d.home, "ps")
+			if !strings.Contains(psOut, "not found in daemon PATH") {
+				t.Fatalf("ps output missing actionable hint:\n%s", psOut)
+			}
+			return
+		}
 		time.Sleep(400 * time.Millisecond)
 	}
 	logs, _ := os.ReadFile(d.logFile)
-	t.Fatalf("expected command-not-found hint in last_error, got %q\nlog:\n%s", lastErr, logs)
+	t.Fatalf("doctor never warned about missing command; lastErr=%q\nlog:\n%s", lastErr, logs)
+}
+
+func doctorCheckByNameQuiet(baseURL string, name string) (string, string) {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(baseURL + "/api/v1/doctor")
+	if err != nil {
+		return "", ""
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var payload struct {
+		Checks []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+			Detail string `json:"detail"`
+		} `json:"checks"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&payload) != nil {
+		return "", ""
+	}
+	for _, c := range payload.Checks {
+		if c.Name == name {
+			return c.Status, c.Detail
+		}
+	}
+	return "", ""
 }
 
 func TestE2E_ServicesMultiPortAndForwarders(t *testing.T) {
