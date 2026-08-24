@@ -56,9 +56,22 @@ func Finish(ctx context.Context, st *Store, p *Plan, reg Registry) ([]StepReport
 }
 
 func HasInterrupted(p *Plan) bool {
+	sawApplied := false
 	for _, s := range p.Steps {
-		if s.Status == StatusInflight || (s.Status == StatusFailed && s.Capture != nil) {
+		switch s.Status {
+		case StatusInflight:
 			return true
+		case StatusFailed:
+			if s.Capture != nil {
+				return true
+			}
+		case StatusApplied:
+			sawApplied = true
+		case StatusReversed:
+		case StatusPending:
+			if sawApplied {
+				return true
+			}
 		}
 	}
 	return false

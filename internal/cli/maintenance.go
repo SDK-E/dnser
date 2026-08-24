@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/SDK-E/dnser/internal/dnsl"
@@ -42,6 +43,21 @@ func rootSuffixOfDomain(domain string) string {
 		return domain
 	}
 	return parts[len(parts)-2] + "." + parts[len(parts)-1]
+}
+
+func countMissingResolverFiles(expected []dnsl.Entry) int {
+	w := dnsl.ResolverWriter{Dir: filepath.Join(string(filepath.Separator), "etc", "resolver")}
+	drifted, err := w.Verify(expected)
+	if err != nil {
+		return 0
+	}
+	missing := 0
+	for _, d := range drifted {
+		if strings.HasSuffix(d, " (missing)") {
+			missing++
+		}
+	}
+	return missing
 }
 
 func splitDots(d string) []string {
@@ -146,6 +162,16 @@ without --fix.`,
 				}
 			}
 
+			if superReachable && len(expected) > 0 {
+				if missing := countMissingResolverFiles(expected); missing > 0 {
+					issues = append(issues, Issue{
+						Kind:     "fallback_dns",
+						Evidence: fmt.Sprintf("%d of %d resolver entries absent; projects only reachable on localhost ports", missing, len(expected)),
+						Fix:      "dnser elevate",
+					})
+				}
+			}
+
 			if o.Format == FormatText {
 				if len(issues) == 0 {
 					fmt.Fprintln(o.Stderr, "clean")
@@ -171,22 +197,43 @@ func helperRegistryForDoctor() journal.Registry {
 }
 
 func NewUpdateCommand() *cobra.Command {
-	var checkOnly bool
+	var (
+		checkOnly bool
+		applyYes  bool
+		fromURL   string
+	)
 	cmd := &cobra.Command{
-		Use:   "update [--check]",
+		Use:   "update [--check] [--yes]",
 		Short: "Detect install source and defer to the right upgrade path",
-		Long: `Detect-and-defer: brew-managed installs print the exact brew command;
-script/manual installs get guided replacement steps. Never overwrites a
-managed binary. --check is read-only.
+		Long: `Detect-and-defer: brew-managed installs print the exact brew command and exit;
+script/manual installs download the release asset, verify sha256 against
+checksums.txt, and replace the binary atomically. Never overwrites a managed
+install. --check is a read-only dry run.
 
-When not to use: this never force-updates; for pinned CI use goreleaser artifacts.`,
+When not to use: for pinned CI builds use goreleaser artifacts directly.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			o := OutputOf(cmd)
+			if applyYes && !checkOnly {
+				self, serr := os.Executable()
+				if serr != nil {
+					return serr
+				}
+				result, uerr := RunUpdate(cmd.Context(), self, fromURL, true, NewHTTPFetcher())
+				if uerr != nil {
+					return uerr
+				}
+				return o.Emit(result)
+			}
 			self, err := os.Executable()
 			if err != nil {
 				return err
 			}
-			source, command := classifyInstall(self)
+			source := classifyInstall(self)[0]
+			command := map[string]string{
+				"brew":   "brew upgrade sdk-e/tap/dnser && brew autoremove",
+				"manual": "dnser update --yes (downloads, verifies checksums.txt, replaces atomically)",
+				"script": "re-run the official install script from the release page",
+			}[source]
 			payload := map[string]any{"source": source, "check_only": checkOnly, "command": command}
 			if o.Format == FormatText {
 				fmt.Fprintf(o.Stderr, "install source: %s\nrun: %s\n", source, command)
@@ -196,18 +243,9 @@ When not to use: this never force-updates; for pinned CI use goreleaser artifact
 		},
 	}
 	cmd.Flags().BoolVar(&checkOnly, "check", false, "read-only check")
+	cmd.Flags().BoolVarP(&applyYes, "yes", "y", false, "apply the update (manual/script installs only)")
+	cmd.Flags().StringVar(&fromURL, "from", "", "override release base URL")
 	return cmd
-}
-
-func classifyInstall(self string) (source, command string) {
-	switch {
-	case hasPrefixAny(self, "/opt/homebrew/", "/usr/local/Homebrew/", "/home/linuxbrew/"):
-		return "brew", "brew upgrade sdk-e/tap/dnser && brew autoremove"
-	case hasPrefixAny(self, "/usr/local/bin/", "/usr/bin/"):
-		return "manual", "download the latest release, verify checksums.txt, replace atomically"
-	default:
-		return "script", "re-run the official install script from the release page"
-	}
 }
 
 func hasPrefixAny(p string, prefixes ...string) bool {
@@ -258,8 +296,12 @@ When not to use: fresh v3 manifests have nothing to migrate.`,
 				RenderPlanText(o, plan)
 				return err
 			}
-			if err := os.WriteFile(path+".v2.bak", data, 0o644); err != nil {
-				return fmt.Errorf("backup original: %w", err)
+			rewritten := rewriteLegacyManifest(data, rewrites)
+			if _, merr := applyMutation(cmd.Context(), "migrate", []MutationWrite{
+				{Path: path + ".v2.bak", Content: data, Mode: 0o644},
+				{Path: path, Content: rewritten, Mode: 0o644},
+			}); merr != nil {
+				return merr
 			}
 			fmt.Fprintf(o.Stderr, "migrated %s (backup at %s.v2.bak)\n", path, path)
 			return nil
@@ -285,6 +327,23 @@ func detectLegacyKeys(data []byte) []string {
 		}
 	}
 	return out
+}
+
+func rewriteLegacyManifest(data []byte, rewrites []string) []byte {
+	lines := splitLines(string(data))
+	out := make([]string, 0, len(lines)+2)
+	for _, line := range lines {
+		switch {
+		case hasKeyPrefix(line, "label:"):
+			value := strings.TrimSpace(strings.TrimPrefix(line, "label:"))
+			out = append(out, "domain: "+value+".test")
+		case hasKeyPrefix(line, "tld:"), hasKeyPrefix(line, "name:"):
+			continue
+		default:
+			out = append(out, line)
+		}
+	}
+	return []byte(strings.Join(out, "\n") + "\n")
 }
 
 func splitLines(s string) []string {

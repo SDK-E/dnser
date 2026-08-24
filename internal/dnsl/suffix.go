@@ -53,3 +53,10 @@ func RootSuffixOf(domain string) string {
 	}
 	return strings.Join(labels[1:], ".")
 }
+
+func FallbackNotice(resolverEntriesMissing bool, port int) string {
+	if !resolverEntriesMissing {
+		return ""
+	}
+	return fmt.Sprintf("fallback mode: /etc/resolver entries absent — projects stay reachable at http://localhost:<port>; run 'dnser elevate' to enable .test domains (listener on 127.0.0.1:%d)", port)
+}

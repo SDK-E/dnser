@@ -95,15 +95,14 @@ When not to use: do not link directories without a .dnser.yaml; use
 				return gerr
 			}
 			genDir := filepath.Join(dot, "generated", name)
-			if err := os.MkdirAll(genDir, 0o755); err != nil {
-				return fmt.Errorf("create generated dir: %w", err)
+			plan, merr := applyMutation(cmd.Context(), "link:"+name, []MutationWrite{
+				{Path: filepath.Join(genDir, "Caddyfile"), Content: out.Caddyfile, Mode: 0o644},
+				{Path: filepath.Join(genDir, "process-compose.yaml"), Content: out.Supervisor, Mode: 0o644},
+			})
+			if merr != nil {
+				return merr
 			}
-			if err := generator.EmitFile(filepath.Join(genDir, "Caddyfile"), out.Caddyfile, 0o644, nil); err != nil {
-				return fmt.Errorf("emit Caddyfile: %w", err)
-			}
-			if err := generator.EmitFile(filepath.Join(genDir, "process-compose.yaml"), out.Supervisor, 0o644, nil); err != nil {
-				return fmt.Errorf("emit supervisor config: %w", err)
-			}
+			fmt.Fprintf(o.Stderr, "journalled mutation %s\n", plan.ID)
 			warnings := dnsl.PublicSuffixWarnings(m.EffectiveNames())
 			if err := st.Link(state.LinkedProject{
 				Name:         name,
