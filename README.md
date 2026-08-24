@@ -19,10 +19,12 @@ Editing `/etc/hosts` for every project is fragile, doesn't support wildcards, an
 |---|---|
 | Real DNS server | A, AAAA, CNAME, TXT, MX, SRV, NS + wildcards, hot-reloaded |
 | HTTP/HTTPS proxy | SNI-routed reverse proxy with backend pools, round-robin and health failover |
-| TCP forwarding | Per-route raw TCP listeners for non-HTTP services |
-| Managed dev servers | `dnser link` runs Next.js, Nuxt, Vite, SvelteKit, Astro, Angular, Remix, Laravel, Symfony, Spring Boot, Django, Rails, Go, Rust — restarts crashed apps with backoff |
+| Path routing | Longest-prefix `paths` per hostname with fallback (`/api` → one pool, everything else → another) |
+| TCP & UDP forwarding | Per-route raw listeners for databases, queues, DNS — any service type |
+| Linkable services | Declare any number of services per project (redis, postgres, smtp…) — dnser-managed processes or external endpoints, each with its own port and optional `<name>.<domain>` record |
+| Managed dev servers | `dnser link` runs Next.js, Nuxt, Vite, SvelteKit, Astro, Angular, Remix, Laravel, Symfony, Spring Boot, Django, Rails, Go, Rust — restarts crashed apps with backoff; commands resolve through an augmented login-shell PATH (no launchd-PATH breakage) |
 | Local CA | Auto-generated root CA, per-domain leaf certs, one-time trust |
-| Web dashboard | Dark premium UI at `https://dnser.test` — project cards, live logs, health dots, ⌘K palette, doctor panel |
+| Web dashboard | Dark premium UI at `https://dnser.test` — project cards, route & service editors, live logs, health dots, ⌘K palette, doctor panel |
 | Live query log | Stream every resolution and app output line to CLI or dashboard |
 | Desktop app | Tray-first GUI: per-project tray menu, one-click setup, launch-at-login, auto-update checks (macOS/Windows/Linux) |
 | Import/export | JSON + BIND zone files |
@@ -48,7 +50,7 @@ The dev server is now managed: it starts with the daemon, restarts on crash,
 and its output lands in the dashboard and `~/.dnser/logs/`. Prefer to run it
 yourself? Add `--no-run --port 3000` and DNSer only proxies.
 
-### Load balancing & TCP
+### Routes: load balancing, path routing, TCP/UDP
 
 Routes are the source of truth in `~/.dnser/dnser.json`:
 
@@ -56,14 +58,16 @@ Routes are the source of truth in `~/.dnser/dnser.json`:
 {
   "routes": [
     { "host": "@", "backends": ["localhost:3001", "localhost:3002"], "https": true },
-    { "host": "tcp", "tcp": true, "listen": 5432, "backends": ["localhost:5433"] }
+    { "host": "@", "backends": ["localhost:4000"], "paths": ["/api"] },
+    { "host": "dbx", "tcp": true, "listen": 55432, "backends": ["localhost:5433"] }
   ]
 }
 ```
 
 Requests round-robin across healthy backends; dead ones are skipped
-automatically. TCP routes bind an explicit local listen port and pipe raw
-bytes.
+automatically. Path prefixes route by longest match with fallback to the
+route without paths. TCP/UDP routes bind an explicit local listen port and
+forward raw traffic to any host. See [docs/routes.md](docs/routes.md).
 
 ## Desktop app
 
@@ -94,6 +98,10 @@ dnser link <path>      detect stack, allocate port, manage the dev server
                        flags: --domain --command --no-run --port --wildcard
                               --alias --tld --no-https --force-https
 dnser unlink <path|domain> [--keep-dns]
+dnser service add|list|remove <domain> [name]   declare managed or external services
+dnser route add|list|remove <domain>            http/https/tcp/udp routes, path prefixes
+dnser settings [set <key> <value>]              force_https, path_refresh_minutes, ports, …
+dnser schema [--project]                        JSON Schema for dnser.json / .dnser.yaml
 dnser ps               managed dev servers and their state
 dnser doctor           diagnose ports, upstreams, resolver, dependencies
 dnser add-record --domain=myproject.test --type=TXT --name=x --value=y
@@ -119,18 +127,44 @@ go build -o dnser ./cmd/dnser
 
 ### Project overrides
 
-A `.dnser.yaml` in the project root overrides detection:
+A `.dnser.yaml` in the project root overrides detection and can declare
+additional services, routes and ports:
 
 ```yaml
 command: pnpm dev --port {port}
+services:
+  redis:
+    type: redis
+    command: redis-server --port {port}
+routes:
+  - host: api
+    paths: [/api]
+    https: true
+    backends: [127.0.0.1:{port}]
+  - host: dbx
+    tcp: true
+    listen: 55432
+    backends: [127.0.0.1:{port:redis}]
 ```
 
-`{port}` is replaced by the persistent port allocated at link time.
-Precedence: `--command` flag > `.dnser.yaml` > built-in recipe.
+`{port}` is replaced by the persistent port allocated at link time;
+`{port:<service>}` by a named service's port.
+Precedence: `--command` flag > `.dnser.yaml` > built-in recipe; stored config
+wins over the file on conflicts.
 
 Dependencies are never installed automatically — if `node_modules`, `vendor`
 or similar is missing, `dnser ps` and the dashboard's doctor panel tell you
 the exact command to run.
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/configuration.md](docs/configuration.md) | `dnser.json` settings reference (force_https, PATH TTL, ports) |
+| [docs/projects.md](docs/projects.md) | Linking, `.dnser.yaml` manifest, services & multi-port model |
+| [docs/routes.md](docs/routes.md) | Routing semantics — hosts, path prefixes, TLS, TCP/UDP |
+| [docs/cli.md](docs/cli.md) | Full CLI reference |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | PATH resolution & exit-127 loops, ports, resolver, CA |
 
 Desktop app development lives behind a build tag (see `packaging/README.md`
 for installer recipes and `.github/workflows/release.yml` for the release
