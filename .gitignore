@@ -1,10 +1,2 @@
-/dnser
-/dist/
-coverage/
-*.test
-*.out
-.DS_Store
-node_modules/
-web/dist/*
-!web/dist/.gitkeep
-web/tsconfig.tsbuildinfo
+packaging/man/
+internal/dashboard/webapp/node_modules/

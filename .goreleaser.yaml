@@ -5,6 +5,8 @@ project_name: dnser
 before:
   hooks:
     - go mod tidy
+    - mkdir -p packaging/man
+    - sh -c "go run ./cmd/dnser man | gzip -9 > packaging/man/dnser.1.gz"
 
 builds:
   - id: dnser

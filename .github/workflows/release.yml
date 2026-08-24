@@ -24,11 +24,6 @@ jobs:
           set -euo pipefail
           go build ./...
           go test ./...
-      - name: generate man page artifact
-        run: |
-          set -euo pipefail
-          mkdir -p packaging/man
-          go run ./cmd/dnser man | gzip -9 > packaging/man/dnser.1.gz
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
