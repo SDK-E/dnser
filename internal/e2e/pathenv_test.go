@@ -149,6 +149,7 @@ func TestE2E_ManagedCommandResolvesViaAugmentedPATH(t *testing.T) {
 	if out, code := runCLI(t, d.home, "link", "--domain=pathdemo", projectDir); code != 0 {
 		t.Fatalf("link: %d %s", code, out)
 	}
+	stopAppsBeforeExit(t, d, "pathdemo.test")
 
 	waitAppState(t, d, "pathdemo.test", "up")
 
@@ -265,20 +266,12 @@ routes:
 	if out, code := runCLI(t, d.home, "link", "--domain=svcproj", projectDir); code != 0 {
 		t.Fatalf("link: %d %s", code, out)
 	}
+	stopAppsBeforeExit(t, d, "svcproj.test", "svcproj.test/aux")
 
 	waitAppState(t, d, "svcproj.test", "up")
 	waitAppState(t, d, "svcproj.test/aux", "up")
 
-	answer := queryDNS(t, d.ports.DNS, "aux.svcproj.test", dns.TypeA)
-	found := false
-	for _, rr := range answer.Answer {
-		if a, ok := rr.(*dns.A); ok && a.A.String() == "127.0.0.1" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("expected service A record aux.svcproj.test → 127.0.0.1, got %+v", answer.Answer)
-	}
+	waitForServiceRecord(t, d.ports.DNS, "aux.svcproj.test")
 
 	req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/", d.ports.HTTP), nil)
 	req.Host = "api.svcproj.test"
@@ -384,4 +377,36 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func stopAppsBeforeExit(t *testing.T, d *daemon, keys ...string) {
+	t.Helper()
+	t.Cleanup(func() {
+		for _, k := range keys {
+			req, err := http.NewRequest(http.MethodPost, d.baseURL+"/api/v1/runner/action/stop/"+k, nil)
+			if err != nil {
+				continue
+			}
+			if resp, err := http.DefaultClient.Do(req); err == nil {
+				_ = resp.Body.Close()
+			}
+		}
+		time.Sleep(600 * time.Millisecond)
+	})
+}
+
+func waitForServiceRecord(t *testing.T, port int, name string) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		answer := queryDNS(t, port, name, dns.TypeA)
+		for _, rr := range answer.Answer {
+			if a, ok := rr.(*dns.A); ok && a.A.String() == "127.0.0.1" {
+				return
+			}
+		}
+		time.Sleep(400 * time.Millisecond)
+	}
+	answer := queryDNS(t, port, name, dns.TypeA)
+	t.Fatalf("service A record %s → 127.0.0.1 never appeared, got %+v", name, answer.Answer)
 }
