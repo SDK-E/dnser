@@ -311,6 +311,9 @@ func (m *Manifest) Validate() error {
 		if s.Port != nil && (*s.Port < 1 || *s.Port > 65535) {
 			return fmt.Errorf("service %q port must be in 1-65535", name)
 		}
+		if m.Availability == AvailabilityOnRequest && pushProtocolService(s.Type) {
+			return fmt.Errorf("service %q: %q-class services cannot be availability: on_request (wake requires HTTP); use always", name, s.Type)
+		}
 	}
 	for _, r := range m.Records {
 		switch strings.ToUpper(r.Type) {
@@ -328,6 +331,15 @@ func (m *Manifest) Validate() error {
 		}
 	}
 	return nil
+}
+
+func pushProtocolService(t string) bool {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "smtp", "smtps", "imap", "imaps", "pop3", "pop3s", "ftp", "sftp", "ssh",
+		"tcp", "udp", "postgres", "postgresql", "mysql", "mariadb", "redis", "mongodb", "mq":
+		return true
+	}
+	return false
 }
 
 func sanitizeLabel(name string) string {

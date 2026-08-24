@@ -101,6 +101,16 @@ min_uptime: 3m
 			wantErr: true,
 		},
 		{
+			name:    "on_request with smtp-class service rejected",
+			yaml:    "domain: a.test\navailability: on_request\nservices:\n  mailer: {type: smtp, port: 1025}\n",
+			wantErr: true,
+		},
+		{
+			name:    "on_request with web service allowed",
+			yaml:    "domain: a.test\navailability: on_request\nservices:\n  ui: {type: http, port: 3000}\n",
+			wantErr: false,
+		},
+		{
 			name:    "https as mapping of wrong value type",
 			yaml:    "domain: a.test\nhttps:\n  a.test: notabool\n",
 			wantErr: true,
