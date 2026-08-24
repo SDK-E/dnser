@@ -2,49 +2,58 @@
 
 Guidance for AI agents working in this repo.
 
-## Stack
-Go 1.27 single static binary · Cobra CLI · miekg/dns (authoritative + forwarding) · net/http stdlib reverse proxy · fsnotify hot-reload · embedded React 19 + Vite + Tailwind v4 UI via go:embed · pnpm 11 · golangci-lint v2
+## State
+The v1 codebase was deliberately deleted (recoverable from git history,
+pre-reset commits). This is a **clean-slate rebuild of dnser v2**. Do not
+reintroduce v1 packages or patterns; implement exactly per the RFCs below.
+
+## Direction
+Read, in order, before any code:
+1. `docs/rfc/001-orchestrator-architecture.md` — architecture, locked
+   component decisions (§5, §13), resource budget (§11), simplification ledger
+2. `docs/rfc/002-project-manifest.md` — `.dnser.yaml` v3 spec
+3. `docs/rfc/003-command-flows.md` — commands, exit codes, confirmation protocol
+4. `docs/rfc/004-failure-containment.md` — mutation wrapper, invariants I1–I7
+5. `docs/rfc/005-implementation-plan.md` — milestones M0–M10 you execute
+
+Decisions in RFC 001 §5/§13 are locked; reopen only with new evidence.
+Open spikes (tenement vs process-compose, ctrld vs dnsproxy) are part of M0.
+
+## Stack (v2 target)
+Go single binary (module `github.com/SDK-E/dnser`) orchestrating external
+tools: Caddy (TLS/SNI/CA/proxy), ctrld-or-dnsproxy (DNS), process-compose
+or tenement (supervision), mkcert/caddy-trust (trust stores).
+Go deps: cobra + charmbracelet/fang + huh + lipgloss, go.yaml.in/yaml/v4,
+timberjack, cenkalti/backoff/v5, invopop/jsonschema, godotenv.
+UI: Mantine v9 + mantine-datatable + TanStack Query, embedded later.
+Layout grows per RFC 005 M0: `internal/{orchestrator,generator,helper,
+journal,cli,...}`, one entrypoint `cmd/dnser`. No desktop app.
 
 ## Commands
-- Build: `go build ./...`; binary: `go build -o dnser ./cmd/dnser`
-- Test: `go test ./...`
-- Lint: `golangci-lint run` (config in .golangci.yaml)
-- Full verify before finishing any change: `go build ./... && go test ./... && golangci-lint run`
-- Desktop verify when touching `internal/desktop` or `cmd/dnser-desktop`: `go build -tags desktop ./... && go vet -tags desktop ./... && golangci-lint run --build-tags desktop`
-- UI build: `pnpm --dir web install && pnpm --dir web build` (dist/ is embedded; Go build fails if missing only when building cmd/dnser after touching web/)
-- Version injection: `-ldflags "-X github.com/SDK-E/dnser/internal/cli.version=X -X main.version=X"` (release pipeline sets both)
-- Packaging recipes: `scripts/package/{icons.go,macos.sh,windows.sh,linux.sh}` + `packaging/`; Linux GUI builds need CGO with `-tags "desktop,gtk3"` (GTK3 + webkit2gtk-4.1, dev packages: libgtk-3-dev libwebkit2gtk-4.1-dev); AppImage assembly requires a native Linux host (AppImage runtime won't exec under qemu)
-
-## Layout rules
-- `cmd/dnser` is the only main package, except `cmd/dnser-desktop` (the Wails GUI entrypoint); every desktop/Wails file carries the `desktop` build tag so default `go build ./...` never pulls in GUI deps (Linux needs webkit2gtk). All logic lives under `internal/`.
-- `internal/cli` — cobra commands, one file per command group; commands must stay thin, delegating to domain packages.
-- `internal/config` — the only place that reads/writes `~/.dnser/dnser.json`. Schema types, defaults, validation, atomic saves, fsnotify watch. Everything else consumes `*config.Store`.
-- `internal/api` — REST `/api/v1` + SSE log stream + embedded static UI. Depends on a `Runtime` interface (satisfied by `daemon.Runtime`), never on daemon directly (import cycle). Version string is injected via `daemon.Options.Version`.
-- `internal/web` (`web/web.go`) — go:embed of `web/dist`; keep `web/dist/.gitkeep` committed so fresh checkouts compile without a UI build.
-- `internal/setup` state file `~/.dnser/setup-state.json` records exactly what setup changed; `unsetup` restores from it only.
-- Port fallbacks when privileged ports are taken: DNS 53→5353→35353 (macOS owns 5353 via mDNSResponder), HTTP 80→8080, HTTPS 443→8443 — never fail hard on occupied privileged ports.
-- `internal/dnscore` — DNS engine: zone matching (exact, wildcard, route labels), record rendering, upstream forwarding with cache. Imports miekg/dns; no HTTP code here.
-- `internal/proxyd` — reverse proxy + SNI routing with backend pools, round-robin (`Router.Pick`) and health-gated selection; TCP forwarders (`TCPManager`) bind explicit listen ports; `internal/certs` — CA + leaf issuance; both consume config.Store snapshots.
-- `internal/runner` — managed dev-server supervisor: recipes per framework, process-group kill (`signals_unix.go`/`signals_windows.go`), exponential backoff restarts (1s→30s cap), tee logging (logstream + rotating `~/.dnser/logs/<domain>.log`), free-port allocation. Tests compile `testdata/helper` via `go build` in TestMain.
-- `internal/daemon/runner.go` reconciles config ↔ supervisor on every reload: starts/stops apps, allocates + persists `run.port` on collision, rewrites matching backend strings, records dependency hints in `depsMissing`.
-- Config schema v2: projects carry `path`, `run` (`{command, mode, port}`) and `routes[]` (`{host, backends[], tcp, listen, https, force_https}`); v1 configs auto-migrate on open. Dotted route hosts ending in the settings TLD are absolute, otherwise multi-level relative labels (`deep.sub` → `deep.sub.app.test`).
-- `internal/setup`, `internal/service` — OS-specific files carry build tags: `darwin.go`, `linux.go`, `windows.go`. Never put syscall/OS-specific calls in shared files.
-- `internal/logstream` — ring buffer + broadcast hub for query events; `internal/daemon` wires DNS, proxy, health checks and the API server into one process with fsnotify-driven hot reload.
-- Tests live next to code as `*_test.go`; integration tests bind high ports (>30000) never privileged ports.
-- `internal/e2e` — black-box end-to-end suite: builds the real binary, spawns it on free high ports with a sandboxed DNSER_HOME and a fake upstream resolver, exercises DNS wire queries, TLS proxy, API/SSE, CLI and hot reload. Runs on every OS in CI (`go test ./internal/e2e/`).
+- Build/test/lint gates after every milestone:
+  `go build ./... && go test ./... && golangci-lint run`
+- Release automation via goreleaser (RFC 001 §13.4); no repo scripts.
 
 ## Conventions
+- RESEARCH BEFORE DECISIONS (hard rule): for any dependency, tool, framework, or UI choice, run problem-first online searches (current-year sources), compare at least 2–3 candidates against THIS project's requirements, and record the evidence links in the relevant RFC before deciding. Never pick from memory, fame, or because the user mentioned a name — a mention triggers research, not selection. "No package exists" claims require demonstrated searches. Decisions must be derived from retrieved facts and the concrete use case — never concluded from model memory; if you haven't searched for a claim, say so and search before answering.
 - No comments in code. Explain design decisions here or in README instead.
 - Commits: conventional commits (`feat:`, `fix:`, `chore:`…).
+- Prefer battle-tested open-source packages over hand-rolled implementations; NIH needs a written justification.
 - Errors: wrap with context (`fmt.Errorf("load config: %w", err)`); never panic outside main.
-- Config file is user-facing: keep JSON field order stable, always write atomically (tmp + rename), preserve unknown-version errors loudly.
-- Domains are normalized lowercase, no trailing dot, stored FQDN-style (`myproject.test`). Record names inside a project are relative labels (`@`, `api`, `*`).
-- Never log secrets; the CA private key path may be logged, its contents never.
-- Brand: dark surfaces from parent brand (`#082003` family) with green `#2cdb16` accents; canonical wordmark assets copied into `web/public/brand/` — never re-draw the mark.
+- Config/manifests are user-facing: strict parsing, atomic writes (tmp+rename).
+- Domains: arbitrary user-owned FQDNs with suffix semantics (RFC 001 §4);
+  no fixed global TLD (`default_tld` is a zero-config hint only).
+- Never log secrets; CA private key path may be logged, contents never.
+- Brand: dark surfaces `#082003` family, accent `#2cdb16`; logo asset
+  "DNS.er" is canonical — never redraw it (assets must be re-added from
+  the owner's brand source before UI work; not present in this repo).
 - Owner/admin identity: `hicham@sdk.enterprises`.
 
 ## Product invariants
-- Zero-config first run: bare `dnser` must guide to a working setup; every default overridable in config/settings.
-- Unhandled queries MUST forward upstream — breaking normal browsing is a release blocker.
-- Privileged ports (53/80/443) fall back gracefully (5353/8080/8443) with clear messaging when unavailable.
-- `dnser unsetup` reverts exactly what `dnser setup` changed, nothing more.
+- Zero-config first run: bare `dnser` must guide to a working setup.
+- Unhandled queries MUST forward upstream — breaking normal browsing is a
+  release blocker.
+- Privileged ports fall back gracefully (53→5353→35353, 80→8080, 443→8443).
+- Uninstall purges everything dnser ever touched, verified against the
+  mutation journal (RFC 003 §3.12, RFC 004).
+- User project processes NEVER run as root (invariant I5).
