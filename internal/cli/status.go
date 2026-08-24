@@ -51,11 +51,14 @@ func newStatusCmd() *cobra.Command {
 				if verbose {
 					for _, route := range p.Routes {
 						kind := "http"
-						if route.TCP {
+						switch {
+						case route.TCP:
 							kind = fmt.Sprintf("tcp:%d", route.Listen)
+						case route.UDP:
+							kind = fmt.Sprintf("udp:%d", route.Listen)
 						}
 						extra := ""
-						if route.ForceHTTPS {
+						if route.EffectiveForceHTTPS(false) {
 							extra = " force-https"
 						} else if route.HTTPS {
 							extra = " https"
@@ -78,11 +81,14 @@ func describeRoutes(p config.Project) string {
 	parts := []string{}
 	for _, route := range p.Routes {
 		kind := ""
-		if route.TCP {
+		switch {
+		case route.TCP:
 			kind = fmt.Sprintf("tcp:%d ", route.Listen)
-		} else if route.ForceHTTPS {
+		case route.UDP:
+			kind = fmt.Sprintf("udp:%d ", route.Listen)
+		case route.ForceHTTPS:
 			kind = "https "
-		} else if route.HTTPS {
+		case route.HTTPS:
 			kind = "tls "
 		}
 		host := route.Hostname(p.Domain, "")

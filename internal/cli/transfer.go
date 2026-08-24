@@ -80,7 +80,7 @@ func renderBIND(cfg config.Config) string {
 		apexBackend, wildcardRoute := "", false
 		https := false
 		for _, route := range p.Routes {
-			if route.TCP || len(route.Backends) == 0 {
+			if route.Forwarded() || len(route.Backends) == 0 {
 				continue
 			}
 			switch route.Host {

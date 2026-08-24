@@ -142,6 +142,20 @@ func newLinkCmd() *cobra.Command {
 			if framework != "" {
 				fmt.Fprintf(out, "  stack: %s\n", framework)
 			}
+			if doc, err := runner.ParseDotDnserDir(abs); err == nil && len(doc.Services) > 0 {
+				fmt.Fprintf(out, "  services:\n")
+				for _, svc := range doc.Services {
+					kind := "external"
+					if svc.Command != "" {
+						kind = "managed"
+					}
+					label := svc.Type
+					if label == "" {
+						label = "service"
+					}
+					fmt.Fprintf(out, "    - %s (%s, %s)\n", svc.Name, label, kind)
+				}
+			}
 			switch {
 			case noRun:
 				fmt.Fprintf(out, "  serves localhost:%d (external process)\n", port)
