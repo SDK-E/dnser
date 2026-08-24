@@ -1,0 +1,25 @@
+log_level: info
+processes:
+    auth:
+        availability:
+            restart: on_failure
+        command: bin/serve
+        environment:
+            - DNSER_DOMAIN=app.acme.io
+            - DNSER_SERVICES_SMTP=127.0.0.1:11025
+            - PORT=3000
+        log_location: /home/dev/.dnser/logs/auth/auth.log
+        shutdown:
+            signal: 15
+            timeout_seconds: 10
+        working_dir: testdata/fixture-root
+    smtp:
+        availability:
+            restart: on_failure
+        command: maildev --smtp-port 11025
+        log_location: /home/dev/.dnser/logs/auth/auth-smtp.log
+        shutdown:
+            signal: 15
+            timeout_seconds: 10
+        working_dir: testdata/fixture-root
+version: "0.5"

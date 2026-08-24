@@ -157,9 +157,11 @@ func (s Shell) JSONSchema() *jsonschema.Schema {
 type HTTPSSetting struct {
 	Enabled bool
 	PerName map[string]bool
+	Set     bool
 }
 
 func (h *HTTPSSetting) UnmarshalYAML(node *yaml.Node) error {
+	h.Set = true
 	switch node.Kind {
 	case yaml.ScalarNode:
 		var b bool

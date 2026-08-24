@@ -1,0 +1,2 @@
+app.acme.io IN A    127.0.0.1
+app.acme.io IN TXT  v=verification abc

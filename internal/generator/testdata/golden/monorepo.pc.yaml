@@ -1,0 +1,30 @@
+log_level: info
+processes:
+    auth:
+        availability:
+            restart: on_failure
+        command: pnpm dev
+        environment:
+            - DNSER_DOMAIN=app.acme.io
+            - DNSER_SERVICES_DB=127.0.0.1:55432
+            - DNSER_SERVICES_REDIS=127.0.0.1:16379
+            - FROM_FILE=yes
+            - PORT=3000
+        log_location: /home/dev/.dnser/logs/auth/auth.log
+        shutdown:
+            signal: 15
+            timeout_seconds: 10
+        working_dir: testdata/fixture-root/apps/web
+    redis:
+        availability:
+            restart: on_failure
+        command: redis-server --port 16379
+        log_location: /home/dev/.dnser/logs/auth/auth-redis.log
+        readiness_probe:
+            exec:
+                command: nc -z 127.0.0.1 16379
+        shutdown:
+            signal: 15
+            timeout_seconds: 10
+        working_dir: testdata/fixture-root/apps/web
+version: "0.5"

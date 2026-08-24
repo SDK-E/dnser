@@ -1,0 +1,16 @@
+log_level: info
+processes:
+    auth:
+        availability:
+            restart: 'no'
+        command: bin/serve
+        disabled: true
+        environment:
+            - DNSER_DOMAIN=sleepy.acme.io
+            - PORT=3000
+        log_location: /home/dev/.dnser/logs/auth/auth.log
+        shutdown:
+            signal: 15
+            timeout_seconds: 10
+        working_dir: testdata/fixture-root
+version: "0.5"

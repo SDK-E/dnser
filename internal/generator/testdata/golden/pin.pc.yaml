@@ -1,0 +1,15 @@
+log_level: info
+processes:
+    auth:
+        availability:
+            restart: on_failure
+        command: npm run dev -- --port 3000
+        environment:
+            - DNSER_DOMAIN=app.acme.io
+            - PORT=3000
+        log_location: /home/dev/.dnser/logs/auth/auth.log
+        shutdown:
+            signal: 15
+            timeout_seconds: 10
+        working_dir: testdata/fixture-root
+version: "0.5"
