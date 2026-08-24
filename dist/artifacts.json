@@ -1,1 +1,0 @@
-[{"name":"metadata.json","path":"dist/metadata.json","internal_type":35,"type":"Metadata"},{"name":"dnser","path":"dist/dnser_darwin_arm64_v8.0/dnser","goos":"darwin","goarch":"arm64","goarm64":"v8.0","target":"darwin_arm64_v8.0","internal_type":4,"type":"Binary","extra":{"Binary":"dnser","Builder":"go","Ext":"","ID":"dnser"}}]
