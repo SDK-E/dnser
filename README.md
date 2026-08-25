@@ -99,9 +99,9 @@ Ready-to-link projects live in [`examples/`](examples/) — clone, `cd`, `link`,
 go build ./... && go test ./... && golangci-lint run
 ```
 
-Documentation lives in [`docs/`](docs): getting started, CLI reference, manifest
-reference, architecture and troubleshooting. Architecture decisions live in
-[`rfc/`](rfc). Brand assets drop into [`docs/brand/`](docs/brand).
+Documentation lives in [`docs/`](docs): getting started, CLI reference,
+manifest reference, architecture and troubleshooting. Brand assets drop
+into [`docs/brand/`](docs/brand).
 
 ## License
 

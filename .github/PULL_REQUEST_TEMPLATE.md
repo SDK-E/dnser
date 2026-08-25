@@ -22,4 +22,5 @@
 ## Risk containment
 
 <!-- If this touches mutations (elevate/link/uninstall/generated configs):
-     which invariants (rfc/004 I1–I7) could it affect, and what test covers them? -->
+     which invariants (I1–I7, see docs/architecture.md) could it affect,
+     and what test covers them? -->

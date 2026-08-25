@@ -30,6 +30,3 @@ Ready-to-link example projects live in [`examples/`](../examples):
 [`node-api`](../examples/node-api),
 [`python-api`](../examples/python-api) and
 [`mailbox-style`](../examples/mailbox-style).
-
-Design decisions and engineering RFCs are not part of the user docs; they
-live in [`rfc/`](../rfc).

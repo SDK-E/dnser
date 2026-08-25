@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Architectural changes must fit the locked decisions in `rfc/001`
-        (§5/§13) — reopen those only with new evidence. Check the docs and
-        existing issues first.
+        Architectural changes must fit dnser's scope as a local-dev
+        orchestrator (see docs/architecture.md); propose big changes in an
+        issue first. Check the docs and existing issues before filing.
   - type: textarea
     id: problem
     attributes:

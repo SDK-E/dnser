@@ -7,7 +7,7 @@
 | Legacy key | Rewrite |
 |---|---|
 | `label: myapp` | `domain: myapp.test` (FQN form; suffix configurable via manifest `domain`) |
-| `tld: dev` | removed — global TLDs are a zero-config hint only (RFC 001 §4); declare explicit `domain:` instead |
+| `tld: dev` | removed — global TLDs are a zero-config hint only; declare explicit `domain:` instead |
 | `name: myapp` | removed — project name comes from the directory |
 
 ## Safety

@@ -71,18 +71,17 @@ PLAN → CAPTURE pre-state → APPLY (write-ahead journal) → VERIFY → REPORT
 - A single-instance lock makes concurrent mutating invocations fail fast
   instead of racing.
 
-The full invariants (I1–I7) are specified in
-[`rfc/004-failure-containment.md`](../rfc/004-failure-containment.md) and
-each has a scripted regression test in `internal/e2e/invariants_test.go`.
+The full invariants (I1–I7) each have a scripted regression test in
+`internal/e2e/invariants_test.go`, named after the invariant so a failure
+maps directly to the contract.
 
 ## Resource profile
 
-Steady-state infrastructure budget (measured, see
-[`rfc/ledger.md`](../rfc/ledger.md)): dnser ~11 MB, DNS listener ~2 MB,
-process-compose ~8 MB, Caddy external — comfortably inside ≤125 MB total,
-≈0% idle CPU. Your apps' memory dwarfs this, which is why per-project
-start/stop and `availability: on_request` + `idle_stop` exist: pay only
-for what you actively develop.
+Measured steady-state infrastructure budget: dnser ~11 MB, DNS listener
+~2 MB, process-compose ~8 MB, Caddy external — comfortably inside ≤125 MB
+total, ≈0% idle CPU. Your apps' memory dwarfs this, which is why
+per-project start/stop and `availability: on_request` + `idle_stop` exist:
+pay only for what you actively develop.
 
 ## State layout
 

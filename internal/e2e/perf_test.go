@@ -77,7 +77,7 @@ func TestPerfBudgetIdleDashboard(t *testing.T) {
 	rssMB := last.RSSKB / 1024
 	cpuDelta := last.CPUS - first.CPUS
 	if rssMB > orchestratorBudgetMB {
-		t.Fatalf("PERF BUDGET VIOLATED (component reopen per RFC 001 §11.2): dnser idle RSS %d MB > %d MB", rssMB, orchestratorBudgetMB)
+		t.Fatalf("PERF BUDGET VIOLATED: dnser idle RSS %d MB > %d MB", rssMB, orchestratorBudgetMB)
 	}
 	if cpuDelta > 0.2 {
 		t.Fatalf("PERF BUDGET VIOLATED: idle CPU %.2fs over 2s window (>0.2s)", cpuDelta)
@@ -119,8 +119,8 @@ func TestDeletionDayLedgerFinalLOC(t *testing.T) {
 	}
 	const target = 3000
 	if total > target*2 {
-		t.Logf("ledger note: non-test Go LOC=%d exceeds RFC target ~%d (informational, not a gate)", total, target)
+		t.Logf("ledger note: non-test Go LOC=%d exceeds target ~%d (informational, not a gate)", total, target)
 	} else {
-		t.Logf("ledger: internal/ non-test Go LOC=%d (RFC 001 §11.1 target ~%d)", total, target)
+		t.Logf("ledger: internal/ non-test Go LOC=%d (target ~%d)", total, target)
 	}
 }
