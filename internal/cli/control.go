@@ -138,22 +138,13 @@ want a coding break, plain down is enough.`,
 	return cmd
 }
 
-func lifecycleControlCmd(verb string, eventIdx int) *cobra.Command {
-	var event orchestrator.Event
-	switch verb {
-	case "stop":
-		event = orchestrator.EventStopRequested
-	case "restart":
-		event = orchestrator.EventBackoffElapsed
-	default:
-		event = orchestrator.EventStartRequested
-	}
+func lifecycleControlCmd(verb string, _ int) *cobra.Command {
 	return &cobra.Command{
 		Use: verb + " <project>",
 		Short: map[string]string{
 			"start":   "Start one linked project now",
 			"stop":    "Stop one running project",
-			"restart": "Restart with wake semantics (stop→start→hold until ready)",
+			"restart": "Restart and hold until ready (wake semantics)",
 		}[verb],
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -168,29 +159,78 @@ func lifecycleControlCmd(verb string, eventIdx int) *cobra.Command {
 			if serr != nil {
 				return serr
 			}
-			mgr := orchestrator.NewManager(super, nil, 30*time.Second)
-			now := time.Now()
-			switch event {
-			case orchestrator.EventStopRequested:
-				if err := mgr.Stop(ctx, name, now); err != nil {
+			switch verb {
+			case "stop":
+				ps, gerr := super.GetProcess(ctx, name)
+				if gerr == nil && !ps.IsRunning && ps.Status == orchestrator.StateStopped {
+					return o.Emit(map[string]any{"project": name, "phase": string(orchestrator.PhaseStopped)})
+				}
+				if err := super.Stop(ctx, name); err != nil {
+					return fmt.Errorf("stop %s: %w", name, err)
+				}
+				if err := waitSuperPhase(ctx, super, name, false, 30*time.Second); err != nil {
 					return err
 				}
-			case orchestrator.EventBackoffElapsed:
-				fake := orchestrator.NewManager(super, nil, 30*time.Second)
-				_ = fake
-				if err := mgr.Start(ctx, name, now); err != nil {
+				return o.Emit(map[string]any{"project": name, "phase": string(orchestrator.PhaseStopped)})
+			case "start":
+				if err := ensureStarted(ctx, super, name); err != nil {
 					return err
 				}
-				if werr := mgr.WakeAndHold(ctx, name, now); werr != nil {
-					return werr
-				}
-			default:
-				if err := mgr.Start(ctx, name, now); err != nil {
+				return o.Emit(map[string]any{"project": name, "phase": string(orchestrator.PhaseReady)})
+			case "restart":
+				ps, gerr := super.GetProcess(ctx, name)
+				running := gerr == nil && ps.IsRunning
+				if running {
+					if err := super.Restart(ctx, name); err != nil {
+						return fmt.Errorf("restart %s: %w", name, err)
+					}
+				} else if err := ensureStarted(ctx, super, name); err != nil {
 					return err
 				}
+				return o.Emit(map[string]any{"project": name, "phase": string(orchestrator.PhaseReady)})
 			}
-			return o.Emit(map[string]any{"project": name, "phase": string(mgr.Phase(name))})
+			return ErrUsage
 		},
+	}
+}
+
+func ensureStarted(ctx context.Context, super *orchestrator.Client, name string) error {
+	ps, err := super.GetProcess(ctx, name)
+	if err == nil && ps.IsRunning && ps.IsReady == orchestrator.HealthReady {
+		return nil
+	}
+	if err := super.Start(ctx, name); err != nil {
+		if !strings.Contains(err.Error(), "already") {
+			return fmt.Errorf("start %s: %w", name, err)
+		}
+	}
+	return waitSuperPhase(ctx, super, name, true, orchestrator.DefaultWakeWait)
+}
+
+func waitSuperPhase(ctx context.Context, super *orchestrator.Client, name string, wantReady bool, within time.Duration) error {
+	deadline := time.Now().Add(within)
+	for {
+		ps, err := super.GetProcess(ctx, name)
+		if err == nil {
+			if wantReady && ps.IsRunning && ps.IsReady == orchestrator.HealthReady {
+				return nil
+			}
+			if !wantReady && !ps.IsRunning {
+				return nil
+			}
+		}
+		if time.Now().After(deadline) {
+			state := "unknown"
+			if err == nil {
+				state = ps.Status + "/" + ps.IsReady
+			}
+			return fmt.Errorf("%s did not reach desired state within %s (last: %s)", name, within, state)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
 	}
 }
 
@@ -272,18 +312,29 @@ When not to use: for process metadata use "dnser status"; logs carry no state.`,
 			if err != nil {
 				return err
 			}
+			var super *orchestrator.Client
+			if sock := supervisorSocketPath(); fileExists(sock) {
+				super = orchestrator.NewUDSClient(sock, "")
+			}
 			path := filepath.Join(dot, "logs", name+".log")
-			if !fileExists(path) {
+			var lines []string
+			if data, rerr := os.ReadFile(path); rerr == nil && len(strings.TrimSpace(string(data))) > 0 {
+				lines = strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+			} else if super != nil {
+				fetched, _, ferr := super.ProcessLogs(cmd.Context(), name, 0, 200)
+				if ferr != nil {
+					return fmt.Errorf("no logs for %s yet (file and supervisor both empty)", name)
+				}
+				lines = fetched
+			} else {
 				return fmt.Errorf("no log file yet at %s (has the project run?)", path)
 			}
-			data, rerr := os.ReadFile(path)
-			if rerr != nil {
-				return fmt.Errorf("read %s: %w", path, rerr)
+			for len(lines) > 0 && lines[len(lines)-1] == "" {
+				lines = lines[:len(lines)-1]
 			}
-			lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-			modTime := fileModTime(path)
 			if o.Format == FormatNDJSON {
 				items := make([]any, 0, len(lines))
+				modTime := fileModTime(path)
 				for _, l := range lines {
 					items = append(items, map[string]any{"ts": modTime, "stream": "stdout", "line": l})
 				}

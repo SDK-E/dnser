@@ -56,10 +56,12 @@ type Service struct {
 }
 
 type Route struct {
-	Path    string `yaml:"path,omitempty" json:"path,omitempty"`
-	Host    string `yaml:"host,omitempty" json:"host,omitempty"`
-	Port    *int   `yaml:"port,omitempty" json:"port,omitempty"`
-	Backend string `yaml:"backend,omitempty" json:"backend,omitempty"`
+	Path     string   `yaml:"path,omitempty" json:"path,omitempty"`
+	Host     string   `yaml:"host,omitempty" json:"host,omitempty"`
+	Port     *int     `yaml:"port,omitempty" json:"port,omitempty"`
+	Backend  string   `yaml:"backend,omitempty" json:"backend,omitempty"`
+	Backends []string `yaml:"backends,omitempty" json:"backends,omitempty"`
+	HTTPS    *bool    `yaml:"https,omitempty" json:"https,omitempty"`
 }
 
 type Record struct {
@@ -313,6 +315,25 @@ func (m *Manifest) Validate() error {
 		}
 		if m.Availability == AvailabilityOnRequest && pushProtocolService(s.Type) {
 			return fmt.Errorf("service %q: %q-class services cannot be availability: on_request (wake requires HTTP); use always", name, s.Type)
+		}
+	}
+	for i, r := range m.Routes {
+		if r.Backend == "" && len(r.Backends) == 0 && r.Port == nil && r.Path == "" {
+			return fmt.Errorf("routes[%d]: needs one of backend, backends, port or path", i)
+		}
+		if r.Backend != "" && len(r.Backends) > 0 {
+			return fmt.Errorf("routes[%d]: backend and backends are mutually exclusive", i)
+		}
+		if r.HTTPS != nil {
+			name := r.Host
+			if name == "@" || name == "" {
+				continue
+			}
+			if m.HTTPS.PerName == nil {
+				m.HTTPS.PerName = map[string]bool{}
+				m.HTTPS.Set = true
+			}
+			m.HTTPS.PerName[name] = *r.HTTPS
 		}
 	}
 	for _, r := range m.Records {

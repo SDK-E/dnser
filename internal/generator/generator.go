@@ -10,6 +10,7 @@ import (
 type Input struct {
 	Project      string
 	Root         string
+	Dir          string
 	Manifest     *config.Manifest
 	Port         int
 	ServicePorts map[string]int
@@ -62,7 +63,7 @@ func Generate(in Input) (*Output, error) {
 	if err != nil {
 		return nil, err
 	}
-	eff, err := effectiveForGenerate(m, in.Root)
+	eff, err := effectiveForGenerate(m, in.dirOrRoot(), in.Project)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +100,11 @@ func Generate(in Input) (*Output, error) {
 	}, nil
 }
 
-func effectiveForGenerate(m *config.Manifest, root string) (*config.EffectiveConfig, error) {
+func effectiveForGenerate(m *config.Manifest, root, project string) (*config.EffectiveConfig, error) {
 	eff, err := config.ResolveEffective(m, nil, config.FlagOverrides{})
+	if eff != nil && project != "" {
+		eff.Domain = config.ResolvedValue[string]{Value: m.PrimaryDomain(project), Source: config.SourceManifest}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -141,4 +145,11 @@ func dedupeNames(in []string) []string {
 		out = append(out, n)
 	}
 	return out
+}
+
+func (in Input) dirOrRoot() string {
+	if in.Dir != "" {
+		return in.Dir
+	}
+	return in.Root
 }

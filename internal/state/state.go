@@ -85,12 +85,20 @@ func (s *Store) ServicePort(projectKey, service string) (int, bool) {
 
 func (s *Store) AllocatePort(projectKey string, preferred int) (int, error) {
 	p := s.project(projectKey)
-	if p.Port != 0 && portFree(p.Port) {
-		return p.Port, nil
+	if p.Port != 0 {
+		if preferred == 0 || preferred == p.Port {
+			return p.Port, nil
+		}
+		if !portFree(preferred) {
+			return 0, fmt.Errorf("requested port %d is in use; stop the holder first or pick another", preferred)
+		}
 	}
 	port, err := pickFree(preferred, s.usedPorts())
 	if err != nil {
 		return 0, err
+	}
+	if preferred > 0 && port != preferred && !portFree(preferred) {
+		return 0, fmt.Errorf("preferred port %d is in use", preferred)
 	}
 	p.Port = port
 	if err := s.Save(); err != nil {
@@ -101,8 +109,13 @@ func (s *Store) AllocatePort(projectKey string, preferred int) (int, error) {
 
 func (s *Store) AllocateServicePort(projectKey, service string, preferred int) (int, error) {
 	p := s.project(projectKey)
-	if existing, ok := p.ServicePorts[service]; ok && existing != 0 && portFree(existing) {
-		return existing, nil
+	if existing, ok := p.ServicePorts[service]; ok && existing != 0 {
+		if preferred == 0 || preferred == existing {
+			return existing, nil
+		}
+		if !portFree(preferred) {
+			return 0, fmt.Errorf("requested port %d for service %q is in use", preferred, service)
+		}
 	}
 	port, err := pickFree(preferred, s.usedPorts())
 	if err != nil {

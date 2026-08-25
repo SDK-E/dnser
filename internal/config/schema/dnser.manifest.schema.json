@@ -69,6 +69,15 @@
         },
         "backend": {
           "type": "string"
+        },
+        "backends": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "https": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false,

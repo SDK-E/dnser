@@ -1,11 +1,13 @@
 package cli
 
 import (
-	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/SDK-E/dnser/internal/config"
 	"github.com/SDK-E/dnser/internal/dnsl"
@@ -61,10 +63,8 @@ When not to use: do not link directories without a .dnser.yaml; use
 				return err
 			}
 			st := mustState()
-			if err != nil {
-				return fmt.Errorf("load state: %w", err)
-			}
 			name := filepath.Base(dir)
+			adoptProjectPort(st, name, derefInt(m.Port))
 			port, err := st.AllocatePort(name, derefInt(m.Port))
 			if err != nil {
 				return err
@@ -85,6 +85,7 @@ When not to use: do not link directories without a .dnser.yaml; use
 			out, gerr := generator.Generate(generator.Input{
 				Project:      name,
 				Root:         dot,
+				Dir:          dir,
 				Manifest:     m,
 				Port:         port,
 				ServicePorts: svcPorts,
@@ -200,8 +201,6 @@ func OutputOf(cmd *cobra.Command) *Output {
 
 type outputKey struct{}
 
-var _ = context.Background
-
 func stateOpen() (*state.Store, error) {
 	path, perr := state.DefaultPath()
 	if perr != nil {
@@ -216,4 +215,26 @@ func mustState() *state.Store {
 		panic(fmt.Sprintf("load state: %v", err))
 	}
 	return st
+}
+
+func adoptProjectPort(st *state.Store, project string, preferred int) {
+	if preferred == 0 {
+		return
+	}
+	pin, hasPin := st.Port(project)
+	if !hasPin || pin == preferred {
+		return
+	}
+	if portBusy(preferred) {
+		_ = st.SetPort(project, preferred)
+	}
+}
+
+func portBusy(port int) bool {
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 300*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }

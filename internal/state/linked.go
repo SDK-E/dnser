@@ -62,3 +62,12 @@ func (s *Store) ListLinked() []LinkedProject {
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
+
+func (s *Store) SetPort(projectKey string, port int) error {
+	p := s.project(projectKey)
+	if p.Port == port {
+		return nil
+	}
+	p.Port = port
+	return s.Save()
+}

@@ -32,7 +32,24 @@ func renderCaddyfile(m *config.Manifest, names []string, primary string, port in
 		if err != nil {
 			return nil, fmt.Errorf("route site %s: %w", r.Host, err)
 		}
-		sites = append(sites, site)
+		merged := false
+		for j := range sites {
+			if sites[j].Address == site.Address {
+				kept := sites[j].Directive[:0:0]
+				for _, d := range sites[j].Directive {
+					if strings.HasPrefix(d, "reverse_proxy ") {
+						continue
+					}
+					kept = append(kept, d)
+				}
+				sites[j].Directive = append(kept, site.Directive...)
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			sites = append(sites, site)
+		}
 	}
 	sort.SliceStable(sites, func(i, j int) bool { return sites[i].Address < sites[j].Address })
 
@@ -81,15 +98,26 @@ func renderSite(m *config.Manifest, name string, port int, ctx config.Placeholde
 }
 
 func renderHostRouteSite(m *config.Manifest, idx int, r config.Route, ctx config.PlaceholderCtx) (caddySite, error) {
-	site := caddySite{Address: r.Host}
-	if httpsForName(m, r.Host) {
+	host := r.Host
+	if host == "@" || host == "" {
+		host = ctx.Domain
+	}
+	site := caddySite{Address: host}
+	if httpsForName(m, host) {
 		site.Directive = append(site.Directive, "tls internal")
 	}
-	target := r.Backend
-	if target == "" && r.Port != nil {
-		target = fmt.Sprintf("127.0.0.1:%d", *r.Port)
+	upstreams := make([]string, 0, len(r.Backends)+1)
+	upstreams = append(upstreams, r.Backends...)
+	if r.Backend != "" {
+		upstreams = append(upstreams, r.Backend)
 	}
-	site.Directive = append(site.Directive, fmt.Sprintf("reverse_proxy %s", target))
+	if len(upstreams) == 0 && r.Port != nil {
+		upstreams = append(upstreams, fmt.Sprintf("127.0.0.1:%d", *r.Port))
+	}
+	if len(upstreams) == 0 {
+		return caddySite{}, fmt.Errorf("routes[%d] (%s): no upstream target", idx, r.Host)
+	}
+	site.Directive = append(site.Directive, "reverse_proxy "+strings.Join(upstreams, " "))
 	site.Directive = append(site.Directive, errorHandlingDirective(0, true))
 	return site, nil
 }

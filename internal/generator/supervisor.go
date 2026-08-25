@@ -2,6 +2,7 @@ package generator
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -89,6 +90,12 @@ func renderSupervisorYAML(in Input, eff *config.EffectiveConfig) ([]byte, error)
 		if eff.Availability.Value == config.AvailabilityManual || eff.Availability.Value == config.AvailabilityOnRequest {
 			proc.Disabled = true
 		}
+		if in.Port > 0 {
+			proc.ReadinessProbe = &pcProbe{
+				Exec:          &pcExecProbe{Command: fmt.Sprintf("nc -z 127.0.0.1 %d", in.Port)},
+				PeriodSeconds: 2,
+			}
+		}
 		data, err := applyProcessRaw(in.Manifest, proc)
 		if err != nil {
 			return nil, err
@@ -146,11 +153,14 @@ func keyFor(service string) string {
 }
 
 func workingDir(in Input) string {
-	cwd := in.Root
-	if in.Manifest.Cwd != "" {
-		cwd = in.Root + "/" + in.Manifest.Cwd
+	base := in.Dir
+	if base == "" {
+		base = in.Root
 	}
-	return cwd
+	if in.Manifest.Cwd != "" {
+		return filepath.Join(base, in.Manifest.Cwd)
+	}
+	return base
 }
 
 func envList(eff *config.EffectiveConfig) []string {

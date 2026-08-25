@@ -3,6 +3,7 @@ package generator
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/SDK-E/dnser/internal/config"
@@ -46,14 +47,24 @@ func validateForGenerate(m *config.Manifest, names []string, primary string) err
 	}
 	for i, r := range m.Routes {
 		hasPort := r.Port != nil
-		hasBackend := r.Backend != ""
-		if hasPort == hasBackend {
+		targets := len(r.Backends) + boolToInt(r.Backend != "")
+		if (targets > 0) == hasPort {
 			return fmt.Errorf("routes[%d]: exactly one of port or backend is required", i)
+		}
+		for j, b := range r.Backends {
+			host, p, err := splitBackend(b)
+			if err != nil {
+				return fmt.Errorf("routes[%d].backends[%d]: %w", i, j, err)
+			}
+			_ = host
+			if p < 1 || p > 65535 {
+				return fmt.Errorf("routes[%d].backends[%d]: port must be in 1-65535", i, j)
+			}
 		}
 		if r.Port != nil && (*r.Port < 1 || *r.Port > 65535) {
 			return fmt.Errorf("routes[%d].port must be in 1-65535", i)
 		}
-		if r.Host != "" && !underOrEqual(r.Host, names) {
+		if r.Host != "" && r.Host != "@" && !underOrEqual(r.Host, names) {
 			return fmt.Errorf("routes[%d].host %q is outside every declared domain", i, r.Host)
 		}
 	}
@@ -105,4 +116,29 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func splitBackend(b string) (string, int, error) {
+	s := strings.TrimPrefix(b, "http://")
+	s = strings.TrimPrefix(s, "https://")
+	idx := strings.LastIndex(s, ":")
+	if idx < 0 {
+		return s, 0, fmt.Errorf("backend %q must be host:port", b)
+	}
+	p, err := strconv.Atoi(s[idx+1:])
+	if err != nil {
+		return s, 0, fmt.Errorf("backend %q port: %w", b, err)
+	}
+	host := s[:idx]
+	if strings.HasPrefix(s, "127.0.0.1") || host == "localhost" {
+		return host, p, nil
+	}
+	return host, p, nil
 }

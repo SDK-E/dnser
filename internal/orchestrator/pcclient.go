@@ -11,13 +11,14 @@ import (
 )
 
 type ProcState struct {
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	IsRunning bool   `json:"is_running"`
-	IsReady   string `json:"is_ready"`
-	Pid       int    `json:"pid"`
-	ExitCode  int    `json:"exit_code"`
-	Age       int    `json:"age"`
+	Name          string `json:"name"`
+	Status        string `json:"status"`
+	IsRunning     bool   `json:"is_running"`
+	IsReady       string `json:"is_ready"`
+	HasReadyProbe bool   `json:"has_ready_probe"`
+	Pid           int    `json:"pid"`
+	ExitCode      int    `json:"exit_code"`
+	Age           int    `json:"age"`
 }
 
 const (
@@ -136,11 +137,27 @@ func (c *Client) Start(ctx context.Context, name string) error {
 }
 
 func (c *Client) Stop(ctx context.Context, name string) error {
-	_, err := c.do(ctx, http.MethodPost, "/process/stop/"+name)
+	_, err := c.do(ctx, http.MethodPatch, "/process/stop/"+name)
 	return err
 }
 
 func (c *Client) Restart(ctx context.Context, name string) error {
 	_, err := c.do(ctx, http.MethodPost, "/process/restart/"+name)
 	return err
+}
+
+func (c *Client) ProcessLogs(ctx context.Context, name string, endOffset, limit int) ([]string, int, error) {
+	b, err := c.do(ctx, http.MethodGet, fmt.Sprintf("/process/logs/%s/%d/%d", name, endOffset, limit))
+	if err != nil {
+		return nil, 0, err
+	}
+	var raw struct {
+		Logs      []string `json:"logs"`
+		EndOffset int      `json:"end_offset"`
+		Truncated bool     `json:"truncated"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil, 0, fmt.Errorf("parse logs: %w", err)
+	}
+	return raw.Logs, raw.EndOffset, nil
 }

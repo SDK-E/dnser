@@ -48,8 +48,8 @@ homebrew_casks:
       - dnser
     dependencies:
       - formula: caddy
-      - formula: process-compose
       - formula: mkcert
+      - formula: f1bonacc1/tap/process-compose
     manpages:
       - packaging/man/dnser.1.gz
     uninstall:
