@@ -52,14 +52,11 @@ homebrew_casks:
       - formula: f1bonacc1/tap/process-compose
     manpages:
       - packaging/man/dnser.1.gz
-    uninstall:
-      launchctl:
-        - enterprises.sdk.dnser
-      delete:
-        - ~/.dnser
     zap:
       delete:
         - ~/.dnser
+      launchctl:
+        - enterprises.sdk.dnser
 
 nfpms:
   - id: dnser
