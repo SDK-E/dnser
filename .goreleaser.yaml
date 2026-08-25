@@ -43,7 +43,7 @@ homebrew_casks:
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/SDK-E/dnser
     description: Local domains, TLS and dev-server orchestration
-    license: MIT
+    license: BUSL-1.1
     binaries:
       - dnser
     dependencies:
@@ -70,7 +70,7 @@ nfpms:
     description: |-
       Local domains, TLS and dev-server orchestration.
       dnser manages project manifests, DNS, TLS and supervised dev servers.
-    license: MIT
+    license: BUSL-1.1
     formats:
       - deb
       - rpm
