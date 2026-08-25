@@ -2,6 +2,8 @@ package generator
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -15,10 +17,10 @@ type caddySite struct {
 	Directive []string
 }
 
-func renderCaddyfile(m *config.Manifest, names []string, primary string, port int, ctx config.PlaceholderCtx) ([]byte, error) {
+func renderCaddyfile(m *config.Manifest, names []string, primary string, port int, ctx config.PlaceholderCtx, staticRoot string) ([]byte, error) {
 	var sites []caddySite
 	for _, name := range names {
-		site, err := renderSite(m, name, port, ctx)
+		site, err := renderSite(m, name, port, ctx, staticRoot)
 		if err != nil {
 			return nil, fmt.Errorf("site %s: %w", name, err)
 		}
@@ -37,7 +39,7 @@ func renderCaddyfile(m *config.Manifest, names []string, primary string, port in
 			if sites[j].Address == site.Address {
 				kept := sites[j].Directive[:0:0]
 				for _, d := range sites[j].Directive {
-					if strings.HasPrefix(d, "reverse_proxy ") {
+					if strings.HasPrefix(d, "reverse_proxy ") || d == "tls internal" || strings.HasPrefix(d, "handle_errors {") {
 						continue
 					}
 					kept = append(kept, d)
@@ -71,7 +73,7 @@ func renderCaddyfile(m *config.Manifest, names []string, primary string, port in
 	return []byte(b.String()), nil
 }
 
-func renderSite(m *config.Manifest, name string, port int, ctx config.PlaceholderCtx) (caddySite, error) {
+func renderSite(m *config.Manifest, name string, port int, ctx config.PlaceholderCtx, staticRoot string) (caddySite, error) {
 	httpsEnabled := httpsForName(m, name)
 	addr := name
 	if !httpsEnabled {
@@ -80,6 +82,15 @@ func renderSite(m *config.Manifest, name string, port int, ctx config.Placeholde
 	site := caddySite{Address: addr}
 	if httpsEnabled {
 		site.Directive = append(site.Directive, "tls internal")
+	}
+	if staticRoot != "" && port == 0 && !hasAnyPortRoute(m) {
+		site.Directive = append(site.Directive, "root * "+staticRoot, "file_server")
+		raw, err := rawCaddyDirectives(m, ctx)
+		if err != nil {
+			return site, err
+		}
+		site.Directive = append(site.Directive, raw...)
+		return site, nil
 	}
 	if port > 0 {
 		site.Directive = append(site.Directive, pathRouteDirectives(m)...)
@@ -131,6 +142,16 @@ func pathRouteDirectives(m *config.Manifest) []string {
 		out = append(out, fmt.Sprintf("handle %s {\n\treverse_proxy 127.0.0.1:%d\n}", r.Path, *r.Port))
 	}
 	return out
+}
+
+func staticServeRoot(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "public", "index.html")); err == nil && !fi.IsDir() {
+		return filepath.Join(dir, "public")
+	}
+	return dir
 }
 
 func hasAnyPortRoute(m *config.Manifest) bool {

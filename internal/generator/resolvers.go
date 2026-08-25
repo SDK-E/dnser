@@ -68,11 +68,7 @@ func answerTable(m *config.Manifest, names []string, primary string) ([]Answer, 
 		addAnswer(n, "A", loopback)
 	}
 	for _, r := range m.Records {
-		name := r.Name
-		if name == "@" {
-			name = primary
-		}
-		addAnswer(name, strings.ToUpper(r.Type), r.Value)
+		addAnswer(config.ExpandRecordName(r.Name, primary), strings.ToUpper(r.Type), r.Value)
 	}
 	for _, svcName := range sortedKeys(m.Services) {
 		svc := m.Services[svcName]

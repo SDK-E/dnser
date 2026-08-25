@@ -59,7 +59,11 @@ func Generate(in Input) (*Output, error) {
 	}
 	ctx := placeholderCtx(in)
 
-	caddyfile, err := renderCaddyfile(m, names, primary, in.Port, ctx)
+	staticRoot := ""
+	if m.ServesStaticFiles() && in.Port == 0 && !m.HasExplicitUpstream() {
+		staticRoot = staticServeRoot(in.Dir)
+	}
+	caddyfile, err := renderCaddyfile(m, names, primary, in.Port, ctx, staticRoot)
 	if err != nil {
 		return nil, err
 	}

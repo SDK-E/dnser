@@ -1,0 +1,6 @@
+type: nodejs
+domain: api.test
+port: 3001
+command: node server.js
+availability: always
+idle_stop: 15m

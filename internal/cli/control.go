@@ -162,7 +162,7 @@ func lifecycleControlCmd(verb string, _ int) *cobra.Command {
 			switch verb {
 			case "stop":
 				ps, gerr := super.GetProcess(ctx, name)
-				if gerr == nil && !ps.IsRunning && ps.Status == orchestrator.StateStopped {
+				if gerr == nil && !ps.IsRunning {
 					return o.Emit(map[string]any{"project": name, "phase": string(orchestrator.PhaseStopped)})
 				}
 				if err := super.Stop(ctx, name); err != nil {

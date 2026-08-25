@@ -72,3 +72,15 @@ func TestValidateForceHTTPSContradiction(t *testing.T) {
 		t.Fatalf("contradiction must be caught: %v", err)
 	}
 }
+
+func TestValidateRecordsBareLabelQualifies(t *testing.T) {
+	ok := mustDecode(t, "domain: inbox.test\nrecords:\n  - {name: www, type: CNAME, value: inbox.test}\n")
+	if err := validateForGenerate(ok, ok.EffectiveNames(), ok.PrimaryDomain("proj")); err != nil {
+		t.Fatalf("bare label should qualify under primary: %v", err)
+	}
+	bad := mustDecode(t, "domain: inbox.test\nrecords:\n  - {name: elsewhere.example, type: A, value: 1.2.3.4}\n")
+	err := validateForGenerate(bad, bad.EffectiveNames(), bad.PrimaryDomain("proj"))
+	if err == nil || !strings.Contains(err.Error(), "outside every declared domain") {
+		t.Fatalf("foreign fqdn must still be rejected, got %v", err)
+	}
+}

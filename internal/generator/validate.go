@@ -34,13 +34,7 @@ func validateForGenerate(m *config.Manifest, names []string, primary string) err
 		}
 	}
 	for i, r := range m.Records {
-		target := r.Name
-		switch target {
-		case "@":
-			target = primary
-		default:
-			target = strings.TrimPrefix(target, "*.")
-		}
+		target := strings.TrimPrefix(config.ExpandRecordName(r.Name, primary), "*.")
 		if !underOrEqual(target, names) {
 			return fmt.Errorf("records[%d] name %q is outside every declared domain; records must live under declared domains", i, r.Name)
 		}

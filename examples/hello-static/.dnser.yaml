@@ -1,0 +1,4 @@
+type: static
+domain: hello.test
+https:
+  hello.test: true

@@ -1,0 +1,21 @@
+# mirrors a real v1 project after `dnser migrate`
+domain: inbox.test
+port: 11090
+command: npm run dev
+routes:
+  - host: "@"
+    https: true
+    backends:
+      - "127.0.0.1:11090"
+      - "127.0.0.1:11091"
+services:
+  smtp:
+    type: smtp
+    host: 127.0.0.1
+    port: 11025
+env:
+  NODE_ENV: development
+records:
+  - name: www
+    type: CNAME
+    value: inbox.test

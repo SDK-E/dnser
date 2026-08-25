@@ -1,0 +1,5 @@
+type: python
+domain: py.test
+port: 3002
+command: python3 app.py
+availability: on_request

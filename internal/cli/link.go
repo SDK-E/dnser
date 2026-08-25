@@ -65,9 +65,12 @@ When not to use: do not link directories without a .dnser.yaml; use
 			st := mustState()
 			name := filepath.Base(dir)
 			adoptProjectPort(st, name, derefInt(m.Port))
-			port, err := st.AllocatePort(name, derefInt(m.Port))
-			if err != nil {
-				return err
+			port := 0
+			if needsPort := derefInt(m.Port) > 0 || !m.ServesStaticFiles() || m.HasExplicitUpstream(); needsPort {
+				port, err = st.AllocatePort(name, derefInt(m.Port))
+				if err != nil {
+					return err
+				}
 			}
 			svcPorts := map[string]int{}
 			for svcName, svc := range m.Services {
