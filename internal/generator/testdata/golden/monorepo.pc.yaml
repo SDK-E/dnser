@@ -11,6 +11,10 @@ processes:
             - FROM_FILE=yes
             - PORT=3000
         log_location: /home/dev/.dnser/logs/auth/auth.log
+        readiness_probe:
+            exec:
+                command: nc -z 127.0.0.1 3000
+            period_seconds: 2
         shutdown:
             signal: 15
             timeout_seconds: 10
