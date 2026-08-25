@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="docs/brand/dnser-logo-dark.png" alt="DNS.er" width="420">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/dnser-logo-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/brand/dnser-logo-light.png">
+  <img src="docs/brand/dnser-logo-dark.png" alt="DNS.er" width="420">
+</picture>
 
 **Local domains, local HTTPS, zero config — for real projects.**
 
