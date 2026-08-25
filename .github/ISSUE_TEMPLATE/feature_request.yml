@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose an improvement or new capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Architectural changes must fit the locked decisions in `rfc/001`
+        (§5/§13) — reopen those only with new evidence. Check the docs and
+        existing issues first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What are you trying to do, and what blocks you today? Workarounds tried.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like dnser to do? Manifest/CLI shape if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other tools, flags, or manifests that get close.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This fits dnser's local-dev orchestrator scope (not production ingress/clustering)
+          required: true

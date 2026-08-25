@@ -26,9 +26,9 @@ proxyd/certs/dnscore/runner/service/logstream/desktop/bespoke-UI all absent
 | Component | Budget | Measured |
 |---|---|---|
 | dnser orchestrator (dashboard process) | ≤ 40 MB / ≈0 % | **11 MB / 0.000s CPU over 2 s** (`TestPerfBudgetIdleDashboard`) |
-| DNS listener (dnsproxy embedded) | ≤ 15 MB / ≈0 % | 1.8–2.0 MB (spike B, docs/spikes/002) |
+| DNS listener (dnsproxy embedded) | ≤ 15 MB / ≈0 % | 1.8–2.0 MB (spike B, rfc/spikes/002) |
 | Caddy | ≤ 30 MB / ≈0 % | external binary; not measured here |
-| process-compose daemon | ≤ 40 MB / ≈0 % | 2.8–7.8 MB (spike A, docs/spikes/001) |
+| process-compose daemon | ≤ 40 MB / ≈0 % | 2.8–7.8 MB (spike A, rfc/spikes/001) |
 | Infrastructure total | ≤ 125 MB / ≤ 1 % | comfortably inside budget on available rows |
 
 ## Invariant regression pack

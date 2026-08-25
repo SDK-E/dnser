@@ -34,7 +34,7 @@ Blocks: M2, M5.
    cenkalti/backoff, invopop/jsonschema, godotenv; wire fang onto root cmd.
 4. Freeze desktop: exclude from v2 build; record deletion in ledger.
 
-Acceptance: two spike verdict docs in `docs/spikes/`; skeleton builds;
+Acceptance: two spike verdict docs in `rfc/spikes/`; skeleton builds;
 `dnser --help` renders through fang.
 
 ### M1 — Config core & contracts  *(~3–4 d)*

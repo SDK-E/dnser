@@ -1,7 +1,7 @@
 # RFC 002 — Project Manifest: `.dnser.yaml` v3 Spec
 
 - Status: **Proposed** (implements RFC 001)
-- Companion to: `docs/rfc/001-orchestrator-architecture.md`
+- Companion to: `rfc/001-orchestrator-architecture.md`
 
 ## 1. Design rules
 

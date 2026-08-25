@@ -1,7 +1,7 @@
 # DNS.er — brand variant specification
 
 Derives entirely from the SDK Enterprises canonical guideline
-(`sdk-e/app → docs/design/brand.md`). Palette, geometry rules and the
+(`sdk-e/app → rfc/design/brand.md`). Palette, geometry rules and the
 never-redraw constraint are inherited unchanged; only the wordmark text
 differs (`SDK.` → `DNS.er`).
 

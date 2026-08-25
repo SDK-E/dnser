@@ -9,12 +9,12 @@ reintroduce v1 packages or patterns; implement exactly per the RFCs below.
 
 ## Direction
 Read, in order, before any code:
-1. `docs/rfc/001-orchestrator-architecture.md` — architecture, locked
+1. `rfc/001-orchestrator-architecture.md` — architecture, locked
    component decisions (§5, §13), resource budget (§11), simplification ledger
-2. `docs/rfc/002-project-manifest.md` — `.dnser.yaml` v3 spec
-3. `docs/rfc/003-command-flows.md` — commands, exit codes, confirmation protocol
-4. `docs/rfc/004-failure-containment.md` — mutation wrapper, invariants I1–I7
-5. `docs/rfc/005-implementation-plan.md` — milestones M0–M10 you execute
+2. `rfc/002-project-manifest.md` — `.dnser.yaml` v3 spec
+3. `rfc/003-command-flows.md` — commands, exit codes, confirmation protocol
+4. `rfc/004-failure-containment.md` — mutation wrapper, invariants I1–I7
+5. `rfc/005-implementation-plan.md` — milestones M0–M10 you execute
 
 Decisions in RFC 001 §5/§13 are locked; reopen only with new evidence.
 Open spikes (tenement vs process-compose, ctrld vs dnsproxy) are part of M0.
