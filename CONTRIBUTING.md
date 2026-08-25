@@ -7,18 +7,14 @@ supervised dev servers, orchestrated from one Go binary.
 
 dnser is a thin orchestrator of proven tools (Caddy, dnsproxy,
 process-compose, mkcert); we write glue, not infrastructure. The v2
-cut-over is complete and lives on `main`; the architecture remains
-specified by the RFCs — read them, in order, before proposing changes:
+cut-over is complete and lives on `main`. How the pieces fit together is
+documented in [`docs/architecture.md`](docs/architecture.md); mutation
+safety has an executable spec: one regression test per invariant in
+`internal/e2e/invariants_test.go`.
 
-1. [`rfc/001-orchestrator-architecture.md`](rfc/001-orchestrator-architecture.md)
-2. [`rfc/002-project-manifest.md`](rfc/002-project-manifest.md)
-3. [`rfc/003-command-flows.md`](rfc/003-command-flows.md)
-4. [`rfc/004-failure-containment.md`](rfc/004-failure-containment.md)
-5. [`rfc/005-implementation-plan.md`](rfc/005-implementation-plan.md)
-
-Decisions marked locked (RFC 001 §5/§13) reopen only with new evidence.
-Current state and measured budgets are recorded in
-[`rfc/ledger.md`](rfc/ledger.md).
+Locked component decisions (Caddy for TLS/proxy, the embedded dnsproxy
+listener, process-compose supervision, mkcert/caddy-trust stores) reopen
+only with new evidence brought via a researched proposal.
 
 ## Product invariants (non-negotiable)
 
@@ -46,7 +42,7 @@ internal/dashboard        loopback web UI server + embedded SPA
 internal/dashboard/webapp Vite + React 19 + Mantine 9 + TanStack Query SPA
 internal/e2e              real-binary flows and invariant regression pack
 packaging/, .goreleaser.yaml, .github/workflows   release automation
-docs/                     user documentation      rfc/   engineering specs
+docs/                     user documentation
 ```
 
 ## Development setup
@@ -92,7 +88,7 @@ touched config structs, regenerate and commit it:
 go run ./cmd/dnser schema > internal/config/schema/dnser.manifest.schema.json
 ```
 
-Invariant regressions map 1:1 to the RFC 004 table via
+Invariant regressions are covered 1:1 by
 `internal/e2e/invariants_test.go` — if you touch mutations (link/elevate/
 uninstall/generated configs), extend the matching invariant test.
 
@@ -107,8 +103,8 @@ uninstall/generated configs), extend the matching invariant test.
   NIH needs written justification.
 - **Research before decisions** (hard rule): dependency/tool choices come
   from problem-first searches compared against *this* project's
-  requirements, with evidence links recorded in the relevant RFC — never
-  from memory or name recognition.
+  requirements, with evidence links recorded in the PR or issue proposing
+  the change — never from memory or name recognition.
 - **Config files are user-facing**: strict parsing (unknown keys error),
   atomic writes (tmp+rename).
 - **Never log secrets**; the CA private key path may be logged, its
@@ -116,8 +112,7 @@ uninstall/generated configs), extend the matching invariant test.
   overridden.
 - **Brand**: dark surfaces `#082003` family, accent `#2cdb16`. The DNS.er
   wordmark in `docs/brand/` is canonical — never redraw it.
-- Docs for users live in [`docs/`](docs/); engineering specs in
-  [`rfc/`](rfc/).
+- Docs for users live in [`docs/`](docs/).
 
 ## Submitting changes
 
