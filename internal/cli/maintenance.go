@@ -46,6 +46,11 @@ func rootSuffixOfDomain(domain string) string {
 	return parts[len(parts)-2] + "." + parts[len(parts)-1]
 }
 
+func resolverDirExists(dir string) bool {
+	info, err := os.Stat(dir)
+	return err == nil && info.IsDir()
+}
+
 func countMissingResolverFiles(expected []dnsl.Entry) int {
 	w := dnsl.ResolverWriter{Dir: filepath.Join(string(filepath.Separator), "etc", "resolver")}
 	drifted, err := w.Verify(expected)
@@ -164,17 +169,14 @@ func collectDoctorIssues(ctx context.Context, st *state.Store, superReachable, f
 		expected = append(expected, dnsl.Entry{Suffix: rootSuffixOfDomain(lp.Domain), Addr: fmt.Sprintf("127.0.0.1:%d", dnsPortFor(st))})
 	}
 	w := dnsl.ResolverWriter{Dir: filepath.Join(string(filepath.Separator), "etc", "resolver")}
-	if len(expected) > 0 {
+	if len(expected) > 0 && resolverDirExists(w.Dir) {
 		drifted, verr := w.Verify(expected)
 		if verr == nil {
 			for _, d := range drifted {
-				kind := "resolver_drift"
-				fixCmd := "dnser journal revert <plan>  ||  dnser unelevate"
 				if strings.HasSuffix(d, " (missing)") {
-					kind = "dead_resolver"
-					fixCmd = "dnser unelevate"
+					continue
 				}
-				issues = append(issues, Issue{Kind: kind, Evidence: "/etc/resolver: " + d, Fix: fixCmd})
+				issues = append(issues, Issue{Kind: "resolver_drift", Evidence: "/etc/resolver: " + d, Fix: "dnser journal revert <plan>  ||  dnser unelevate"})
 			}
 		}
 	}
