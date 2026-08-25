@@ -20,6 +20,9 @@ One Go binary orchestrating Caddy, a local DNS server, and process-compose.
 
 </div>
 
+<img width="1091" height="836" alt="Screenshot 2026-08-25 at 09 48 37" src="https://github.com/user-attachments/assets/f4cf57a0-af06-439a-85f5-2439f7c01519" />
+
+
 ---
 
 ## Install
