@@ -200,7 +200,12 @@ func ensureStarted(ctx context.Context, super *orchestrator.Client, name string)
 		return nil
 	}
 	if err := super.Start(ctx, name); err != nil {
-		if !strings.Contains(err.Error(), "already") {
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "already"):
+		case strings.Contains(msg, "no such process"):
+			return fmt.Errorf("%s is newer than the running supervisor config; reload with: dnser down && dnser up", name)
+		default:
 			return fmt.Errorf("start %s: %w", name, err)
 		}
 	}
