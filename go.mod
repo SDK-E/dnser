@@ -3,7 +3,7 @@ module github.com/SDK-E/dnser
 go 1.27.0
 
 require (
-	github.com/AdguardTeam/dnsproxy v0.84.1
+	github.com/AdguardTeam/dnsproxy v0.84.2
 	github.com/charmbracelet/fang v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.14.0
@@ -12,7 +12,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
 	golang.org/x/net v0.58.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
